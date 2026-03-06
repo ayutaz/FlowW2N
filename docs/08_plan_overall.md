@@ -1,6 +1,8 @@
 # FlowW2N: 総合実装計画
 
-本ドキュメントでは、FlowW2N（Whispered-to-Normal Speech Conversion via Flow-Matching, arXiv:2603.04296v1）の再現実装に必要な全体計画を策定する。フェーズ別開発スケジュール、計算リソース見積もり、論文未記載パラメータの推定、リスク分析、マイルストーンを包括的にまとめる。
+本ドキュメントでは、FlowW2N（Whispered-to-Normal Speech Conversion via Flow-Matching, arXiv:2603.04296v1）の再現実装コードの開発計画を策定する。フェーズ別開発スケジュール、計算リソース見積もり、論文未記載パラメータの推定、リスク分析、マイルストーンを包括的にまとめる。
+
+**スコープ**: 本計画の対象は再現実装コード（モデル定義、学習スクリプト、推論・評価パイプライン）の作成のみ。データセットのダウンロード・前処理、および学習の実行は別環境で行う前提とする。
 
 ---
 
@@ -9,62 +11,51 @@
 ### 1.1 全体ガントチャート
 
 ```
-Week  1    2    3    4    5    6    7    8
-      |    |    |    |    |    |    |    |
-Ph0   [====]                                環境構築・データ準備
-Ph1   [=========]                           VAE 学習
-Ph2        [=========]                      条件付けモジュール・合成ウィスパー
-Ph3             [================]          DiT 学習
-Ph4                        [=========]     評価・チューニング
+Week  1    2    3    4
+      |    |    |    |
+Ph0   [==]                 環境構築・プロジェクト構造
+Ph1   [======]             VAE モデル・学習コード
+Ph2      [======]          条件付けモジュール・合成ウィスパーコード
+Ph3         [========]     DiT・Flow Matching・推論・評価コード
 ```
 
-### 1.2 Phase 0: 環境構築・データ準備 (Week 1)
+### 1.2 Phase 0: 環境構築・プロジェクト構造 (Week 1 前半)
 
 | タスク | 詳細 | 完了条件 |
 |--------|------|---------|
-| 環境セットアップ | Python 3.11/3.12, CUDA, PyTorch 2.1+ | `uv run python -c "import torch; print(torch.cuda.is_available())"` が True |
-| 依存ライブラリ | stable-audio-tools 関連, transformers, speechbrain 等 | 全パッケージインポート成功 |
-| HiFi-TTS-2 ダウンロード | HuggingFace からダウンロード | データ確認、サンプル再生 |
-| 前処理スクリプト | 24kHz→16kHz リサンプリング、モノラル化、正規化 | 前処理済みデータ生成完了 |
-| ディレクトリ構造 | プロジェクト構造の構築 | 全ディレクトリ作成完了 |
+| 依存ライブラリ定義 | pyproject.toml に全依存を定義 | `uv sync` で全パッケージインストール成功 |
+| ディレクトリ構造 | src/floww2n/ 以下のパッケージ構築 | 全モジュールのインポート成功 |
+| 設定ファイル | configs/ に VAE/DiT/data の JSON 作成 | 設定の読み込み・検証コード動作 |
 
-### 1.3 Phase 1: VAE 学習 (Week 1-2)
+### 1.3 Phase 1: VAE モデル・学習コード (Week 1-2)
 
 | タスク | 詳細 | 完了条件 |
 |--------|------|---------|
-| Oobleck VAE 移植 | stable-audio-tools から必要コードを抽出・適応 | 単体テスト通過 |
-| VAE 設定調整 | sr=16kHz, strides=[4,4,8,8], D=64 | フレームレート ≈ 15.6Hz 確認 |
-| 損失関数実装 | Multi-res STFT + Discriminator + KL | 損失値が適切に低下 |
-| VAE 学習実行 | 80K steps, batch 256 | STFT loss 収束、復元音声の主観品質確認 |
-| VAE 検証 | 復元品質の定量・定性評価 | 入力/復元音声の差異が許容範囲内 |
+| Oobleck VAE 移植 | stable-audio-tools から必要コードを抽出・適応 | ダミー入力でフォワードパス成功 |
+| VAE 設定調整 | sr=16kHz, strides=[4,4,8,8], D=64 | 出力 shape 検証: フレームレート ≈ 15.6Hz |
+| 損失関数実装 | Multi-res STFT + Discriminator + KL | 損失計算がエラーなく動作 |
+| VAE 学習スクリプト | train_vae.py（DataLoader, optimizer, ループ, チェックポイント保存） | ダミーデータで1 step 実行成功 |
+| DataLoader 実装 | VAEDataset（固定長セグメント、リサンプリング対応） | 単体テスト通過 |
 
-### 1.4 Phase 2: 条件付けモジュール・合成ウィスパー (Week 2-3)
-
-| タスク | 詳細 | 完了条件 |
-|--------|------|---------|
-| Whisper Base 統合 | HuggingFace Transformers, layer 5 出力取得 | hidden_states[6] の shape = (B, 1500, 512) |
-| ECAPA-TDNN 統合 | SpeechBrain spkrec-ecapa-voxceleb | 出力 shape = (B, 192) |
-| 合成ウィスパー実装 | 4手法（最低2手法で開始可） | 合成結果の聴取確認、F0消失確認 |
-| 特徴量キャッシュ | Whisper h, ECAPA e_spk, VAE z1 の事前計算 | キャッシュ済みデータで DiT DataLoader 動作確認 |
-
-### 1.5 Phase 3: DiT 学習 (Week 3-5)
+### 1.4 Phase 2: 条件付けモジュール・合成ウィスパーコード (Week 1-2)
 
 | タスク | 詳細 | 完了条件 |
 |--------|------|---------|
-| DiT アーキテクチャ | 24 blocks, AdaLN, cross-attention | フォワードパス通過、出力 shape 確認 |
-| Flow Matching 学習ループ | CFM 目的関数、Euler サンプリング | 損失値が適切に低下 |
-| DiT 学習実行 | 推定 200K-500K steps | 生成音声の主観品質が向上 |
-| 中間チェックポイント | 50K, 100K, 200K steps で評価 | WER が段階的に改善 |
+| Whisper Base ラッパー | HuggingFace Transformers, layer 5 出力取得 | ダミー入力で shape = (B, 1500, 512) 確認 |
+| ECAPA-TDNN ラッパー | SpeechBrain spkrec-ecapa-voxceleb | ダミー入力で shape = (B, 192) 確認 |
+| 合成ウィスパーモジュール | 4手法の実装 + WhisperSynthesizer 統合クラス | 単体テスト通過 |
+| 特徴量キャッシュスクリプト | Whisper h, ECAPA e_spk, VAE z1 の事前計算スクリプト | コード実行可能（データなしでも構造確認） |
 
-### 1.6 Phase 4: 評価・チューニング (Week 5-7)
+### 1.5 Phase 3: DiT・Flow Matching・推論・評価コード (Week 2-4)
 
 | タスク | 詳細 | 完了条件 |
 |--------|------|---------|
-| 評価パイプライン構築 | WER-N, WER-W, UTMOS, DNSMOS, SpkSim | 全指標の計算が正常動作 |
-| wTIMIT 評価 | 実ウィスパー音声での評価 | 論文値との比較表作成 |
-| CHAINS 評価 | 実ウィスパー音声での評価 | 論文値との比較表作成 |
-| ハイパーパラメータチューニング | embed_dim, 学習率, ステップ数等 | 最良設定の確定 |
-| アブレーション | 条件付け方式の比較（cross-attn vs prepend）| Table 3 の再現 |
+| DiT アーキテクチャ | 24 blocks, AdaLN, cross-attention | ダミー入力でフォワードパス成功、出力 shape 確認 |
+| Flow Matching 学習ループ | CFM 目的関数、train_dit.py | ダミーデータで1 step 実行成功 |
+| DiT DataLoader | DiTDataset + collate 関数（可変長対応） | 単体テスト通過 |
+| 推論パイプライン | FlowW2NPipeline + Euler サンプラー | ランダム入力でエンドツーエンド推論成功 |
+| 評価パイプライン | WER-N, WER-W, UTMOS, DNSMOS, SpkSim | 各指標の計算コードが動作（ダミーデータ可） |
+| 統合テスト | 全コンポーネントの結合テスト | ランダム重みで推論→評価のパイプライン通過 |
 
 ---
 
@@ -185,57 +176,52 @@ Ph4                        [=========]     評価・チューニング
 
 ---
 
-## 5. マイルストーンと Go/No-Go 基準
+## 5. マイルストーンと完了基準
 
-### M0: 環境構築完了 (Week 1)
+### M0: プロジェクト基盤完了
 
-- [x] 全依存ライブラリのインストール成功
-- [x] HiFi-TTS-2 のダウンロードと前処理完了
-- [x] GPU で PyTorch の動作確認
+- [ ] pyproject.toml に全依存定義、`uv sync` 成功
+- [ ] ディレクトリ構造・パッケージ構造の構築完了
+- [ ] configs/ に VAE/DiT/data の設定ファイル作成
 
-**Go/No-Go**: 環境が正常に構築できなければ、互換性問題を解決してから次に進む。
+**完了基準**: `uv run python -c "import floww2n"` が成功。
 
-### M1: VAE 学習完了 (Week 2)
+### M1: VAE コード完成
 
-- [ ] STFT loss が収束（最終値の変動 < 5%）
-- [ ] 復元音声が主観的に自然に聞こえる
-- [ ] フレームレート ≈ 15.6 Hz 確認
-- [ ] 潜在表現の shape = (B, 64, L)
+- [ ] OobleckEncoder/Decoder の移植完了
+- [ ] ダミー入力 (B, 65536) → VAE → 復元 (B, 65536) のフォワードパス成功
+- [ ] フレームレート ≈ 15.6 Hz（潜在 shape = (B, 64, L)）確認
+- [ ] 損失関数（Multi-res STFT + Discriminator + KL）のコード動作確認
+- [ ] train_vae.py でダミーデータ 1 step 実行成功
 
-**Go/No-Go**: 復元品質が著しく低い場合、stride/SR の組み合わせを見直す (R1 対策)。
+**完了基準**: VAE の encode → decode → loss 計算が正常動作。
 
-### M2: 条件付けモジュール完成 (Week 3)
+### M2: 条件付けモジュール・合成ウィスパーコード完成
 
-- [ ] Whisper layer 5 出力の取得成功
-- [ ] ECAPA-TDNN 話者埋め込みの取得成功
-- [ ] 合成ウィスパー 2手法以上の動作確認
-- [ ] Domain invariance の検証（Pearson 相関 > 0.85）
+- [ ] Whisper Base ラッパーでダミー入力から layer 5 出力取得成功
+- [ ] ECAPA-TDNN ラッパーでダミー入力から話者埋め込み取得成功
+- [ ] 合成ウィスパー 4 手法の実装完了、単体テスト通過
+- [ ] 特徴量キャッシュスクリプトの実装完了
 
-**Go/No-Go**: Domain invariance が低い場合、レイヤー選択を再検討 (R6 対策)。
+**完了基準**: 全条件付けモジュールが正しい shape のテンソルを出力。
 
-### M3: DiT 学習開始・中間評価 (Week 4)
+### M3: DiT・学習コード完成
 
-- [ ] DiT のフォワードパス成功
-- [ ] CFM 損失が単調に減少
-- [ ] 50K steps で初期生成結果の定性評価
-- [ ] 生成音声が「通常音声らしい」品質
+- [ ] DiT (24 blocks, AdaLN, cross-attention) のフォワードパス成功
+- [ ] CFM 目的関数の実装完了
+- [ ] train_dit.py でダミーデータ 1 step 実行成功
+- [ ] DiTDataset + collate 関数の単体テスト通過
 
-**Go/No-Go**: 50K steps で品質改善が見られない場合、embed_dim/学習率を調整 (R2, R5 対策)。
+**完了基準**: DiT の入力→速度場出力→損失計算が正常動作。
 
-### M4: DiT 学習完了 (Week 5-6)
+### M4: 推論・評価パイプライン完成
 
-- [ ] 損失値が安定（プラトー到達）
-- [ ] 生成音声の WER が入力ウィスパーより改善
-- [ ] UTMOS / DNSMOS が通常音声に近い値
+- [ ] FlowW2NPipeline でランダム重みによるエンドツーエンド推論成功
+- [ ] Euler サンプラー（N=10）の動作確認
+- [ ] 評価指標（WER-N, WER-W, UTMOS, DNSMOS, SpkSim）の計算コード動作
+- [ ] 統合テスト: 推論→評価のパイプライン全体が通過
 
-### M5: 最終評価完了 (Week 7-8)
-
-- [ ] wTIMIT での WER-N, WER-W, UTMOS, DNSMOS, SpkSim 計測完了
-- [ ] CHAINS での同上
-- [ ] 論文値との比較表作成
-- [ ] 結果の分析と考察
-
-**成功基準**: 論文値の ±20% 以内の性能を達成。
+**完了基準**: ダミーまたはランダム重みで推論→波形出力→評価スコア算出が一通り動作。全コードが学習環境にデプロイ可能な状態。
 
 ---
 
@@ -306,31 +292,30 @@ FlowW2N/
 
 最小限の労力で動作するプロトタイプを早期に構築し、段階的に品質を向上させる方針。
 
-### 7.1 最小実行可能パイプライン (MVP)
+### 7.1 最小実行可能コード (MVP)
 
 1. **VAE**: SA2.0 のコードを最小限の修正で移植（stride/SR 変更のみ）
 2. **DiT**: SA2.0 の DiffusionTransformer を CFM 目的関数に変更
-3. **合成ウィスパー**: LPC devoicing 1手法のみで開始
-4. **条件付け**: Whisper layer 5 + ECAPA-TDNN
-5. **評価**: WER-N のみで初期評価
+3. **合成ウィスパー**: LPC devoicing 1手法のみで実装
+4. **条件付け**: Whisper layer 5 + ECAPA-TDNN ラッパー
+5. **推論**: FlowW2NPipeline + Euler サンプラー
 
-### 7.2 段階的改善
+### 7.2 段階的実装
 
-| 段階 | 追加要素 | 期待効果 |
+| 段階 | 追加コード | 成果物 |
 |------|---------|---------|
-| MVP | 基本パイプライン | 動作確認、ベースライン |
-| +1 | 合成ウィスパー4手法 | 汎化性能向上 |
-| +2 | embed_dim チューニング | 性能最適化 |
-| +3 | cross-attention 改善 | 条件付け品質向上 |
-| +4 | 全評価指標 | 論文との完全比較 |
+| MVP | VAE + DiT + 条件付け + 推論 | ダミーデータでエンドツーエンド動作 |
+| +1 | 合成ウィスパー残り3手法 | 全4手法の WhisperSynthesizer |
+| +2 | 学習スクリプト完成 | train_vae.py, train_dit.py が実行可能 |
+| +3 | 評価パイプライン | 全5指標の計算コード |
+| +4 | 設定ファイル・テスト | configs/, tests/ の整備 |
 
 ---
 
 ## 8. まとめ
 
-1. **5フェーズ、約7-8週間** の開発スケジュール
-2. **単一 GPU (24GB+)** で実行可能だが、A100 推奨
-3. **ストレージ 250-500 GB** が必要
-4. **論文未記載パラメータ** は SA2.0 と DiT 原論文から推定（embed_dim=768, lr=1.5e-4 等）
-5. **最大リスク** は SR/stride 設定と合成ウィスパー品質 → 早期検証で軽減
-6. **Quick-Win 戦略** により、2-3週間で MVP を構築し、段階的に改善
+1. **4フェーズ、約3-4週間** のコード実装スケジュール（学習・データ準備は別環境）
+2. **論文未記載パラメータ** は SA2.0 と DiT 原論文から推定（embed_dim=768, lr=1.5e-4 等）
+3. **最大リスク** は SR/stride 設定とライブラリ互換性 → ダミーデータでの早期検証で軽減
+4. **Quick-Win 戦略** により、まず MVP コードを構築し、段階的にコンポーネントを追加
+5. **成果物**: 学習環境にデプロイ可能な再現実装コード一式（モデル、学習スクリプト、推論・評価パイプライン）
