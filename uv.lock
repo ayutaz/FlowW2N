@@ -564,6 +564,7 @@ dependencies = [
     { name = "speechbrain" },
     { name = "torch" },
     { name = "torchaudio" },
+    { name = "tqdm" },
     { name = "transformers" },
     { name = "wandb" },
 ]
@@ -592,6 +593,7 @@ requires-dist = [
     { name = "speechbrain", specifier = ">=1.0.0" },
     { name = "torch", specifier = ">=2.10.0" },
     { name = "torchaudio", specifier = ">=2.10.0" },
+    { name = "tqdm", specifier = ">=4.67.3" },
     { name = "transformers", specifier = ">=4.36.0" },
     { name = "wandb", specifier = ">=0.25.0" },
 ]
