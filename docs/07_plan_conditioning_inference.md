@@ -1,5 +1,13 @@
 # FlowW2N: 条件付けモジュール・推論パイプライン・評価パイプライン 実装計画
 
+> **実装状況**: ⚠️ 条件付けモジュール (M2) 完了、推論・評価パイプライン (M4) 未着手。
+> - ✅ `src/floww2n/models/content_encoder.py` - Whisper Base layer 5 wrapper
+> - ✅ `src/floww2n/models/speaker_encoder.py` - ECAPA-TDNN wrapper
+> - 🔲 `src/floww2n/inference/pipeline.py` - FlowW2NPipeline (未実装)
+> - 🔲 `src/floww2n/inference/sampler.py` - Euler sampler (未実装, FlowW2NModel.sample()に統合済み)
+> - 🔲 `src/floww2n/evaluation/metrics.py` - 評価指標 (未実装)
+> - 🔲 `src/floww2n/evaluation/evaluate.py` - 評価パイプライン (未実装)
+
 本ドキュメントでは、FlowW2N の再現実装に必要な条件付けモジュール（Whisper encoder, ECAPA-TDNN）、推論パイプライン、および評価パイプラインの実装計画を策定する。
 
 ---

@@ -186,33 +186,33 @@ Ph3         [========]     DiT・Flow Matching・推論・評価コード
 
 **完了基準**: `uv run python -c "import floww2n"` が成功。
 
-### M1: VAE コード完成
+### M1: VAE コード完成 --- COMPLETE
 
-- [ ] OobleckEncoder/Decoder の移植完了
-- [ ] ダミー入力 (B, 65536) → VAE → 復元 (B, 65536) のフォワードパス成功
-- [ ] フレームレート ≈ 15.6 Hz（潜在 shape = (B, 64, L)）確認
-- [ ] 損失関数（Multi-res STFT + Discriminator + KL）のコード動作確認
-- [ ] train_vae.py でダミーデータ 1 step 実行成功
+- [x] OobleckEncoder/Decoder の移植完了
+- [x] ダミー入力 (B, 65536) → VAE → 復元 (B, 65536) のフォワードパス成功
+- [x] フレームレート ≈ 15.6 Hz（潜在 shape = (B, 64, L)）確認
+- [x] 損失関数（Multi-res STFT + Discriminator + KL）のコード動作確認
+- [x] train_vae.py でダミーデータ 1 step 実行成功
 
-**完了基準**: VAE の encode → decode → loss 計算が正常動作。
+**完了基準**: VAE の encode → decode → loss 計算が正常動作。 **(達成済み: vae.py ~573行, losses.py ~435行, VAEDataset, train_vae.py, 9テスト通過)**
 
-### M2: 条件付けモジュール・合成ウィスパーコード完成
+### M2: 条件付けモジュール・合成ウィスパーコード完成 --- COMPLETE
 
-- [ ] Whisper Base ラッパーでダミー入力から layer 5 出力取得成功
-- [ ] ECAPA-TDNN ラッパーでダミー入力から話者埋め込み取得成功
-- [ ] 合成ウィスパー 4 手法の実装完了、単体テスト通過
-- [ ] 特徴量キャッシュスクリプトの実装完了
+- [x] Whisper Base ラッパーでダミー入力から layer 5 出力取得成功
+- [x] ECAPA-TDNN ラッパーでダミー入力から話者埋め込み取得成功
+- [x] 合成ウィスパー 4 手法の実装完了、単体テスト通過
+- [x] 特徴量キャッシュスクリプトの実装完了
 
-**完了基準**: 全条件付けモジュールが正しい shape のテンソルを出力。
+**完了基準**: 全条件付けモジュールが正しい shape のテンソルを出力。 **(達成済み: content_encoder.py, speaker_encoder.py, whisper_synthesis.py, cache_features.py, generate_whisper.py)**
 
-### M3: DiT・学習コード完成
+### M3: DiT・学習コード完成 --- COMPLETE
 
-- [ ] DiT (24 blocks, AdaLN, cross-attention) のフォワードパス成功
-- [ ] CFM 目的関数の実装完了
-- [ ] train_dit.py でダミーデータ 1 step 実行成功
-- [ ] DiTDataset + collate 関数の単体テスト通過
+- [x] DiT (24 blocks, AdaLN, cross-attention) のフォワードパス成功
+- [x] CFM 目的関数の実装完了
+- [x] train_dit.py でダミーデータ 1 step 実行成功
+- [x] DiTDataset + collate 関数の単体テスト通過
 
-**完了基準**: DiT の入力→速度場出力→損失計算が正常動作。
+**完了基準**: DiT の入力→速度場出力→損失計算が正常動作。 **(達成済み: dit.py ~580行, floww2n.py ~260行, DiTDataset + dit_collate_fn, ~205M params, 9テスト通過, 合計18/18テスト通過)**
 
 ### M4: 推論・評価パイプライン完成
 
@@ -302,13 +302,13 @@ FlowW2N/
 
 ### 7.2 段階的実装
 
-| 段階 | 追加コード | 成果物 |
-|------|---------|---------|
-| MVP | VAE + DiT + 条件付け + 推論 | ダミーデータでエンドツーエンド動作 |
-| +1 | 合成ウィスパー残り3手法 | 全4手法の WhisperSynthesizer |
-| +2 | 学習スクリプト完成 | train_vae.py, train_dit.py が実行可能 |
-| +3 | 評価パイプライン | 全5指標の計算コード |
-| +4 | 設定ファイル・テスト | configs/, tests/ の整備 |
+| 段階 | 追加コード | 成果物 | 状態 |
+|------|---------|---------|------|
+| MVP | VAE + DiT + 条件付け + 推論 | ダミーデータでエンドツーエンド動作 | **大部分完了** (推論パイプライン未実装) |
+| +1 | 合成ウィスパー残り3手法 | 全4手法の WhisperSynthesizer | **完了** |
+| +2 | 学習スクリプト完成 | train_vae.py, train_dit.py が実行可能 | **完了** |
+| +3 | 評価パイプライン | 全5指標の計算コード | 未着手 |
+| +4 | 設定ファイル・テスト | configs/, tests/ の整備 | **完了** (18/18テスト通過) |
 
 ---
 

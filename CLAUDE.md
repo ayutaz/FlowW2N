@@ -31,14 +31,26 @@ uv run python <script>  # スクリプト実行
 
 ```
 src/floww2n/           # メインパッケージ
-  models/              # VAE, DiT, content/speaker encoder, 統合モデル
-  training/            # 学習スクリプト, 損失関数, データセット
-  inference/           # 推論パイプライン, Euler サンプラー
-  data/                # 前処理, 合成ウィスパー生成
-  evaluation/          # 評価指標, 評価パイプライン
+  models/              # モデル定義
+    vae.py             # Oobleck VAE (~573 lines, ~40M params)
+    dit.py             # DiffusionTransformer (~580 lines, ~205M params)
+    floww2n.py         # FlowW2NModel: CFM loss + Euler sampling
+    content_encoder.py # Whisper Base layer 5 wrapper (凍結)
+    speaker_encoder.py # ECAPA-TDNN wrapper (凍結)
+  training/            # 学習関連
+    losses.py          # Multi-res STFT + Discriminator + KL loss
+    dataset.py         # VAEDataset + DiTDataset + dit_collate_fn
+    train_vae.py       # VAE 学習ループ (EMA, bf16, discriminator)
+    train_dit.py       # DiT 学習ループ (CFM, EMA, bf16, warmup)
+  inference/           # 推論パイプライン (未実装)
+  data/                # 合成ウィスパー生成
+    whisper_synthesis.py  # 4手法 (LPC, glottal, formant, praat)
+  evaluation/          # 評価指標 (未実装)
 configs/               # 設定ファイル (vae.json, dit.json, data.json)
 scripts/               # エントリポイントスクリプト
-tests/                 # テスト
+  train_vae.py, train_dit.py, cache_features.py, generate_whisper.py
+tests/                 # テスト (18 tests passing)
+  test_vae.py (9), test_dit.py (9)
 ```
 
 ## 設定ファイル
@@ -78,3 +90,34 @@ tests/                 # テスト
 
 本リポジトリは再現実装コード（モデル定義、学習スクリプト、推論・評価パイプライン）の作成が対象。
 データセットのダウンロード・前処理および学習の実行は別環境で行う。
+
+## 実装状況
+
+| マイルストーン | 状態 | 内容 |
+|--------------|------|------|
+| M0: 環境構築 | ✅ 完了 | pyproject.toml, ディレクトリ構造, 設定ファイル |
+| M1: VAE | ✅ 完了 | Oobleck VAE, 損失関数, 学習スクリプト |
+| M2: 条件付け | ✅ 完了 | Whisper/ECAPA encoder, 合成ウィスパー, キャッシュ |
+| M3: DiT・CFM | ✅ 完了 | DiffusionTransformer, FlowW2NModel, 学習スクリプト |
+| M4: 推論・評価 | 🔲 未着手 | FlowW2NPipeline, 評価指標, 統合テスト |
+
+## テスト実行
+
+```bash
+uv run pytest tests/ -v   # 全テスト実行 (18 tests)
+uv run pytest tests/test_vae.py -v  # VAE テストのみ
+uv run pytest tests/test_dit.py -v  # DiT テストのみ
+```
+
+## 学習実行
+
+```bash
+# VAE 学習
+uv run python scripts/train_vae.py --config configs/vae.json --data-dir <path> --output-dir outputs/vae
+
+# 特徴量キャッシュ
+uv run python scripts/cache_features.py --data-dir <path> --output-dir <cache_path> --vae-checkpoint <vae_ckpt>
+
+# DiT 学習
+uv run python scripts/train_dit.py --config configs/dit.json --cache-dir <cache_path> --output-dir outputs/dit
+```

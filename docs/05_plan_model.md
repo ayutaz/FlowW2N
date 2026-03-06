@@ -1,5 +1,12 @@
 # FlowW2N: コアモデル（VAE + DiT）実装計画
 
+> **実装状況**: ✅ VAE (M1) および DiT (M3) の実装完了。
+> - `src/floww2n/models/vae.py` - Oobleck VAE (~573 lines, ~40M params), 9 tests passing
+> - `src/floww2n/models/dit.py` - DiffusionTransformer (~580 lines, ~205M params), 9 tests passing
+> - `src/floww2n/models/floww2n.py` - FlowW2NModel (CFM loss + Euler sampling)
+> - `src/floww2n/training/losses.py` - Multi-res STFT + Discriminator + KL loss
+> - `src/floww2n/training/train_vae.py` / `train_dit.py` - 学習ループ
+
 本ドキュメントでは、FlowW2N の再現実装に必要なコアモデル（VAE と DiT）の実装計画を策定する。stable-audio-tools の調査結果に基づき、Oobleck VAE と DiffusionTransformer の適応方針を詳述する。
 
 ---
