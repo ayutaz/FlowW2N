@@ -12,9 +12,11 @@ Architecture:
 """
 
 import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint as torch_checkpoint
 
 
 class FourierFeatures(nn.Module):
@@ -31,9 +33,7 @@ class FourierFeatures(nn.Module):
     def __init__(self, num_frequencies: int = 256, embed_dim: int = 768):
         super().__init__()
         # Random frequencies, fixed after initialization
-        self.register_buffer(
-            "frequencies", torch.randn(num_frequencies) * 0.2
-        )
+        self.register_buffer("frequencies", torch.randn(num_frequencies) * 0.2)
         fourier_dim = num_frequencies * 2
 
         self.mlp = nn.Sequential(
@@ -126,7 +126,6 @@ class Attention(nn.Module):
         self.num_heads = num_heads
         self.head_dim = head_dim
         self.inner_dim = num_heads * head_dim
-        self.scale = head_dim ** -0.5
         self.dropout = dropout
         self.is_cross_attention = is_cross_attention
 
@@ -182,7 +181,9 @@ class Attention(nn.Module):
 
         # Scaled dot-product attention (uses flash attention when available)
         attn_out = F.scaled_dot_product_attention(
-            q, k, v,
+            q,
+            k,
+            v,
             dropout_p=self.dropout if self.training else 0.0,
         )
 
@@ -250,9 +251,7 @@ class TransformerBlock(nn.Module):
 
         # AdaLN scale/shift/gate parameters (learnable per block)
         # 6 modulation vectors: (scale1, shift1, gate1, scale2, shift2, gate2)
-        self.adaLN_modulation = nn.Parameter(
-            torch.randn(6, dim) / dim ** 0.5
-        )
+        self.adaLN_modulation = nn.Parameter(torch.randn(6, dim) / dim**0.5)
 
     def forward(
         self,
@@ -275,7 +274,7 @@ class TransformerBlock(nn.Module):
         # Compute AdaLN modulation parameters
         if global_cond is not None:
             # global_cond: (B, 6*dim) -> 6 x (B, 1, dim)
-            modulation = (self.adaLN_modulation.unsqueeze(0) + global_cond.view(x.shape[0], 6, -1))
+            modulation = self.adaLN_modulation.unsqueeze(0) + global_cond.view(x.shape[0], 6, -1)
             scale1, shift1, gate1, scale2, shift2, gate2 = modulation.unbind(dim=1)
             # Add sequence dimension: (B, dim) -> (B, 1, dim)
             scale1 = scale1.unsqueeze(1)
@@ -330,8 +329,7 @@ def sinusoidal_positional_embedding(length: int, dim: int, device: torch.device)
     """
     position = torch.arange(length, dtype=torch.float32, device=device).unsqueeze(1)
     div_term = torch.exp(
-        torch.arange(0, dim, 2, dtype=torch.float32, device=device)
-        * -(math.log(10000.0) / dim)
+        torch.arange(0, dim, 2, dtype=torch.float32, device=device) * -(math.log(10000.0) / dim)
     )
     pe = torch.zeros(length, dim, device=device)
     pe[:, 0::2] = torch.sin(position * div_term)
@@ -364,6 +362,7 @@ class DiffusionTransformer(nn.Module):
         dropout: Dropout rate (default: 0.0)
         cross_attend: Whether to use cross-attention (default: True)
         num_fourier_features: Number of Fourier frequency pairs for timestep (default: 256)
+        gradient_checkpointing: Whether to use gradient checkpointing (default: False)
     """
 
     def __init__(
@@ -379,6 +378,7 @@ class DiffusionTransformer(nn.Module):
         dropout: float = 0.0,
         cross_attend: bool = True,
         num_fourier_features: int = 256,
+        gradient_checkpointing: bool = False,
     ):
         super().__init__()
 
@@ -386,6 +386,7 @@ class DiffusionTransformer(nn.Module):
         self.embed_dim = embed_dim
         self.depth = depth
         self.head_dim = head_dim
+        self.gradient_checkpointing = gradient_checkpointing
 
         # Input projection: channel-first Conv1d -> transpose to sequence-first
         self.input_proj = nn.Conv1d(io_channels, embed_dim, kernel_size=1)
@@ -414,18 +415,20 @@ class DiffusionTransformer(nn.Module):
             )
 
         # Transformer blocks
-        self.blocks = nn.ModuleList([
-            TransformerBlock(
-                dim=embed_dim,
-                num_heads=num_heads,
-                head_dim=head_dim,
-                ff_mult=ff_mult,
-                dropout=dropout,
-                cross_attend=cross_attend,
-                context_dim=embed_dim,  # After projection
-            )
-            for _ in range(depth)
-        ])
+        self.blocks = nn.ModuleList(
+            [
+                TransformerBlock(
+                    dim=embed_dim,
+                    num_heads=num_heads,
+                    head_dim=head_dim,
+                    ff_mult=ff_mult,
+                    dropout=dropout,
+                    cross_attend=cross_attend,
+                    context_dim=embed_dim,  # After projection
+                )
+                for _ in range(depth)
+            ]
+        )
 
         # Final norm and output projection
         self.final_norm = nn.LayerNorm(embed_dim)
@@ -483,12 +486,22 @@ class DiffusionTransformer(nn.Module):
 
         # 6. Transformer blocks
         for block in self.blocks:
-            x = block(
-                x,
-                global_cond=adaln_cond,
-                cross_attn_cond=cross_cond,
-                pos_emb=pos_emb,
-            )
+            if self.training and self.gradient_checkpointing:
+                x = torch_checkpoint(
+                    block,
+                    x,
+                    adaln_cond,
+                    cross_cond,
+                    pos_emb,
+                    use_reentrant=False,
+                )
+            else:
+                x = block(
+                    x,
+                    global_cond=adaln_cond,
+                    cross_attn_cond=cross_cond,
+                    pos_emb=pos_emb,
+                )
 
         # 7. Final norm and output projection
         x = self.final_norm(x)  # (B, T, embed_dim)
@@ -528,12 +541,14 @@ if __name__ == "__main__":
     T_latent = 64  # VAE latent sequence length (e.g., 1s at 15.6Hz ~ 16 frames)
     T_whisper = 50  # Whisper frames (e.g., 1s at 50Hz)
 
-    x = torch.randn(B, 64, T_latent, device=device)        # Noisy latent
-    t = torch.rand(B, device=device)                         # Timestep
+    x = torch.randn(B, 64, T_latent, device=device)  # Noisy latent
+    t = torch.rand(B, device=device)  # Timestep
     whisper_feat = torch.randn(B, T_whisper, 512, device=device)  # Whisper features
-    speaker_embed = torch.randn(B, 768, device=device)       # Speaker embed (already projected to embed_dim)
+    speaker_embed = torch.randn(
+        B, 768, device=device
+    )  # Speaker embed (already projected to embed_dim)
 
-    print(f"\nInput shapes:")
+    print("\nInput shapes:")
     print(f"  x (noisy latent): {x.shape}")
     print(f"  t (timestep):     {t.shape}")
     print(f"  whisper_feat:     {whisper_feat.shape}")
@@ -570,7 +585,7 @@ if __name__ == "__main__":
 
     with torch.no_grad():
         v_long = model(x_long, t_long, cross_attn_cond=w_long, global_cond=spk_long)
-    print(f"\nLong sequence test:")
+    print("\nLong sequence test:")
     print(f"  Input: {x_long.shape}, Output: {v_long.shape}")
     assert v_long.shape == x_long.shape
     print("Long sequence check passed.")

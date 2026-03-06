@@ -1,11 +1,12 @@
 """Oobleck VAE (encoder-decoder) for waveform compression."""
 
 import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.utils import weight_norm
 from alias_free_torch import Activation1d
+from torch.nn.utils import weight_norm
 
 
 def WNConv1d(*args, **kwargs):
@@ -30,7 +31,7 @@ class SnakeBeta(nn.Module):
     """
 
     def __init__(self, in_features, alpha=1.0, alpha_trainable=True, alpha_logscale=True):
-        super(SnakeBeta, self).__init__()
+        super().__init__()
         self.in_features = in_features
 
         # initialize alpha
@@ -89,34 +90,33 @@ class ResidualUnit(nn.Module):
     """
 
     def __init__(
-        self,
-        in_channels,
-        out_channels,
-        dilation,
-        use_snake=False,
-        antialias_activation=False
+        self, in_channels, out_channels, dilation, use_snake=False, antialias_activation=False
     ):
         super().__init__()
 
         self.dilation = dilation
 
-        padding = (dilation * (7-1)) // 2
+        padding = (dilation * (7 - 1)) // 2
 
         self.layers = nn.Sequential(
-            get_activation("snake" if use_snake else "elu", antialias=antialias_activation, channels=out_channels),
+            get_activation(
+                "snake" if use_snake else "elu",
+                antialias=antialias_activation,
+                channels=out_channels,
+            ),
             WNConv1d(
                 in_channels=in_channels,
                 out_channels=out_channels,
                 kernel_size=7,
                 dilation=dilation,
-                padding=padding
+                padding=padding,
             ),
-            get_activation("snake" if use_snake else "elu", antialias=antialias_activation, channels=out_channels),
-            WNConv1d(
-                in_channels=out_channels,
-                out_channels=out_channels,
-                kernel_size=1
-            )
+            get_activation(
+                "snake" if use_snake else "elu",
+                antialias=antialias_activation,
+                channels=out_channels,
+            ),
+            WNConv1d(in_channels=out_channels, out_channels=out_channels, kernel_size=1),
         )
 
     def forward(self, x):
@@ -137,41 +137,31 @@ class EncoderBlock(nn.Module):
     """
 
     def __init__(
-        self,
-        in_channels,
-        out_channels,
-        stride,
-        use_snake=False,
-        antialias_activation=False
+        self, in_channels, out_channels, stride, use_snake=False, antialias_activation=False
     ):
         super().__init__()
 
         self.layers = nn.Sequential(
             ResidualUnit(
-                in_channels=in_channels,
-                out_channels=in_channels,
-                dilation=1,
-                use_snake=use_snake
+                in_channels=in_channels, out_channels=in_channels, dilation=1, use_snake=use_snake
             ),
             ResidualUnit(
-                in_channels=in_channels,
-                out_channels=in_channels,
-                dilation=3,
-                use_snake=use_snake
+                in_channels=in_channels, out_channels=in_channels, dilation=3, use_snake=use_snake
             ),
             ResidualUnit(
-                in_channels=in_channels,
-                out_channels=in_channels,
-                dilation=9,
-                use_snake=use_snake
+                in_channels=in_channels, out_channels=in_channels, dilation=9, use_snake=use_snake
             ),
-            get_activation("snake" if use_snake else "elu", antialias=antialias_activation, channels=in_channels),
+            get_activation(
+                "snake" if use_snake else "elu",
+                antialias=antialias_activation,
+                channels=in_channels,
+            ),
             WNConv1d(
                 in_channels=in_channels,
                 out_channels=out_channels,
-                kernel_size=2*stride,
+                kernel_size=2 * stride,
                 stride=stride,
-                padding=math.ceil(stride/2)
+                padding=math.ceil(stride / 2),
             ),
         )
 
@@ -198,7 +188,7 @@ class DecoderBlock(nn.Module):
         stride,
         use_snake=False,
         antialias_activation=False,
-        use_nearest_upsample=False
+        use_nearest_upsample=False,
     ):
         super().__init__()
 
@@ -208,41 +198,36 @@ class DecoderBlock(nn.Module):
                 WNConv1d(
                     in_channels=in_channels,
                     out_channels=out_channels,
-                    kernel_size=2*stride,
+                    kernel_size=2 * stride,
                     stride=1,
                     bias=False,
-                    padding='same'
-                )
+                    padding="same",
+                ),
             )
         else:
             upsample_layer = WNConvTranspose1d(
                 in_channels=in_channels,
                 out_channels=out_channels,
-                kernel_size=2*stride,
+                kernel_size=2 * stride,
                 stride=stride,
-                padding=math.ceil(stride/2)
+                padding=math.ceil(stride / 2),
             )
 
         self.layers = nn.Sequential(
-            get_activation("snake" if use_snake else "elu", antialias=antialias_activation, channels=in_channels),
+            get_activation(
+                "snake" if use_snake else "elu",
+                antialias=antialias_activation,
+                channels=in_channels,
+            ),
             upsample_layer,
             ResidualUnit(
-                in_channels=out_channels,
-                out_channels=out_channels,
-                dilation=1,
-                use_snake=use_snake
+                in_channels=out_channels, out_channels=out_channels, dilation=1, use_snake=use_snake
             ),
             ResidualUnit(
-                in_channels=out_channels,
-                out_channels=out_channels,
-                dilation=3,
-                use_snake=use_snake
+                in_channels=out_channels, out_channels=out_channels, dilation=3, use_snake=use_snake
             ),
             ResidualUnit(
-                in_channels=out_channels,
-                out_channels=out_channels,
-                dilation=9,
-                use_snake=use_snake
+                in_channels=out_channels, out_channels=out_channels, dilation=9, use_snake=use_snake
             ),
         )
 
@@ -271,7 +256,7 @@ class OobleckEncoder(nn.Module):
         c_mults=[1, 2, 4, 8],
         strides=[2, 4, 8, 8],
         use_snake=False,
-        antialias_activation=False
+        antialias_activation=False,
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -281,22 +266,36 @@ class OobleckEncoder(nn.Module):
         self.depth = len(c_mults)
 
         layers = [
-            WNConv1d(in_channels=in_channels, out_channels=c_mults[0] * channels, kernel_size=7, padding=3)
+            WNConv1d(
+                in_channels=in_channels,
+                out_channels=c_mults[0] * channels,
+                kernel_size=7,
+                padding=3,
+            )
         ]
 
-        for i in range(self.depth-1):
+        for i in range(self.depth - 1):
             layers += [
                 EncoderBlock(
-                    in_channels=c_mults[i]*channels,
-                    out_channels=c_mults[i+1]*channels,
+                    in_channels=c_mults[i] * channels,
+                    out_channels=c_mults[i + 1] * channels,
                     stride=strides[i],
-                    use_snake=use_snake
+                    use_snake=use_snake,
                 )
             ]
 
         layers += [
-            get_activation("snake" if use_snake else "elu", antialias=antialias_activation, channels=c_mults[-1] * channels),
-            WNConv1d(in_channels=c_mults[-1]*channels, out_channels=latent_dim, kernel_size=3, padding=1)
+            get_activation(
+                "snake" if use_snake else "elu",
+                antialias=antialias_activation,
+                channels=c_mults[-1] * channels,
+            ),
+            WNConv1d(
+                in_channels=c_mults[-1] * channels,
+                out_channels=latent_dim,
+                kernel_size=3,
+                padding=1,
+            ),
         ]
 
         self.layers = nn.Sequential(*layers)
@@ -330,7 +329,7 @@ class OobleckDecoder(nn.Module):
         use_snake=False,
         antialias_activation=False,
         use_nearest_upsample=False,
-        final_tanh=True
+        final_tanh=True,
     ):
         super().__init__()
         self.out_channels = out_channels
@@ -340,25 +339,40 @@ class OobleckDecoder(nn.Module):
         self.depth = len(c_mults)
 
         layers = [
-            WNConv1d(in_channels=latent_dim, out_channels=c_mults[-1]*channels, kernel_size=7, padding=3),
+            WNConv1d(
+                in_channels=latent_dim,
+                out_channels=c_mults[-1] * channels,
+                kernel_size=7,
+                padding=3,
+            ),
         ]
 
-        for i in range(self.depth-1, 0, -1):
+        for i in range(self.depth - 1, 0, -1):
             layers += [
                 DecoderBlock(
-                    in_channels=c_mults[i]*channels,
-                    out_channels=c_mults[i-1]*channels,
-                    stride=strides[i-1],
+                    in_channels=c_mults[i] * channels,
+                    out_channels=c_mults[i - 1] * channels,
+                    stride=strides[i - 1],
                     use_snake=use_snake,
                     antialias_activation=antialias_activation,
-                    use_nearest_upsample=use_nearest_upsample
+                    use_nearest_upsample=use_nearest_upsample,
                 )
             ]
 
         layers += [
-            get_activation("snake" if use_snake else "elu", antialias=antialias_activation, channels=c_mults[0] * channels),
-            WNConv1d(in_channels=c_mults[0] * channels, out_channels=out_channels, kernel_size=7, padding=3, bias=False),
-            nn.Tanh() if final_tanh else nn.Identity()
+            get_activation(
+                "snake" if use_snake else "elu",
+                antialias=antialias_activation,
+                channels=c_mults[0] * channels,
+            ),
+            WNConv1d(
+                in_channels=c_mults[0] * channels,
+                out_channels=out_channels,
+                kernel_size=7,
+                padding=3,
+                bias=False,
+            ),
+            nn.Tanh() if final_tanh else nn.Identity(),
         ]
 
         self.layers = nn.Sequential(*layers)
@@ -383,7 +397,7 @@ def vae_sample(mean, scale):
     logvar = torch.log(var)
     latents = torch.randn_like(mean) * stdev + mean
 
-    kl = (mean * mean + var - logvar - 1).sum(1).mean()
+    kl = 0.5 * (mean * mean + var - logvar - 1).sum(1).mean()
 
     return latents, kl
 
@@ -509,8 +523,8 @@ class AudioAutoencoder(nn.Module):
         z, info = self.bottleneck.encode(h, return_info=True)
 
         # Rename 'kl' to 'kl_loss' for consistency
-        if 'kl' in info:
-            info['kl_loss'] = info.pop('kl')
+        if "kl" in info:
+            info["kl_loss"] = info.pop("kl")
 
         return z, info
 

@@ -1,16 +1,16 @@
 """VAE training script with multi-resolution STFT + discriminator + KL loss."""
 
 import json
-import torch
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
 from pathlib import Path
-from ema_pytorch import EMA
+
+import torch
 import wandb
+from ema_pytorch import EMA
+from torch.utils.data import DataLoader
 
 from floww2n.models.vae import AudioAutoencoder
-from floww2n.training.losses import VAELoss
 from floww2n.training.dataset import VAEDataset
+from floww2n.training.losses import VAELoss
 
 
 def load_config(config_path):
@@ -83,11 +83,12 @@ def train_vae(config_path, data_dir, output_dir, resume_from=None):
         num_workers=train_cfg["num_workers"],
         pin_memory=True,
         drop_last=True,
+        persistent_workers=True,
+        prefetch_factor=4,
     )
 
     # Mixed precision
     use_amp = train_cfg["mixed_precision"] == "bf16"
-    scaler = torch.amp.GradScaler(enabled=use_amp)
     amp_dtype = torch.bfloat16 if use_amp else torch.float32
 
     # Training loop
@@ -126,50 +127,41 @@ def train_vae(config_path, data_dir, output_dir, resume_from=None):
             # === Generator step ===
             with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
                 recon, info = model(batch)
-                g_loss, g_dict = criterion.generator_loss(
-                    batch, recon, info["kl_loss"]
-                )
+                g_loss, g_dict = criterion.generator_loss(batch, recon, info["kl_loss"])
                 g_loss = g_loss / grad_accum
 
-            scaler.scale(g_loss).backward()
+            g_loss.backward()
 
             if (global_step + 1) % grad_accum == 0:
-                scaler.step(opt_g)
-                scaler.update()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                opt_g.step()
                 opt_g.zero_grad()
+                ema.update()
 
             # === Discriminator step ===
             with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
                 d_loss, d_dict = criterion.discriminator_loss(batch, recon.detach())
                 d_loss = d_loss / grad_accum
 
-            scaler.scale(d_loss).backward()
+            d_loss.backward()
 
             if (global_step + 1) % grad_accum == 0:
-                scaler.step(opt_d)
-                scaler.update()
+                opt_d.step()
                 opt_d.zero_grad()
-                ema.update()
 
             # Logging
             if global_step % 100 == 0:
-                log_dict = {
-                    f"train/{k}": v.item() for k, v in {**g_dict, **d_dict}.items()
-                }
+                log_dict = {f"train/{k}": v.item() for k, v in {**g_dict, **d_dict}.items()}
                 log_dict["train/global_step"] = global_step
                 g_total = g_dict.get("total_g", g_loss * grad_accum).item()
                 d_total = d_dict.get("total_d", d_loss * grad_accum).item()
-                print(
-                    f"Step {global_step}/{max_steps} | G: {g_total:.4f} | D: {d_total:.4f}"
-                )
+                print(f"Step {global_step}/{max_steps} | G: {g_total:.4f} | D: {d_total:.4f}")
                 if wandb.run:
                     wandb.log(log_dict, step=global_step)
 
             # Checkpoint
             if global_step > 0 and global_step % 10000 == 0:
-                save_checkpoint(
-                    output_path, model, criterion, opt_g, opt_d, ema, global_step
-                )
+                save_checkpoint(output_path, model, criterion, opt_g, opt_d, ema, global_step)
 
             global_step += 1
 

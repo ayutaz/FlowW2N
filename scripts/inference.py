@@ -10,7 +10,6 @@ import torchaudio
 
 from floww2n.inference import FlowW2NPipeline
 
-
 AUDIO_EXTENSIONS = {".wav", ".flac", ".mp3", ".ogg", ".opus", ".sph", ".m4a"}
 
 
@@ -38,48 +37,60 @@ def find_audio_files(path):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Run FlowW2N whisper-to-normal speech conversion"
-    )
+    parser = argparse.ArgumentParser(description="Run FlowW2N whisper-to-normal speech conversion")
     parser.add_argument(
-        "--input", type=str, required=True,
+        "--input",
+        type=str,
+        required=True,
         help="Input whisper audio file or directory containing audio files",
     )
     parser.add_argument(
-        "--output-dir", type=str, required=True,
+        "--output-dir",
+        type=str,
+        required=True,
         help="Output directory for converted audio files",
     )
     parser.add_argument(
-        "--vae-checkpoint", type=str, required=True,
+        "--vae-checkpoint",
+        type=str,
+        required=True,
         help="Path to VAE checkpoint (.pt state_dict)",
     )
     parser.add_argument(
-        "--dit-checkpoint", type=str, required=True,
+        "--dit-checkpoint",
+        type=str,
+        required=True,
         help="Path to DiT/FlowW2N checkpoint (.pt state_dict)",
     )
     parser.add_argument(
-        "--vae-config", type=str, default="configs/vae.json",
+        "--vae-config",
+        type=str,
+        default="configs/vae.json",
         help="Path to VAE config JSON (default: configs/vae.json)",
     )
     parser.add_argument(
-        "--dit-config", type=str, default="configs/dit.json",
+        "--dit-config",
+        type=str,
+        default="configs/dit.json",
         help="Path to DiT config JSON (default: configs/dit.json)",
     )
     parser.add_argument(
-        "--num-steps", type=int, default=10,
+        "--num-steps",
+        type=int,
+        default=10,
         help="Number of Euler integration steps (default: 10)",
     )
     parser.add_argument(
-        "--device", type=str, default="cuda",
+        "--device",
+        type=str,
+        default="cuda",
         help="Device for inference (default: cuda)",
     )
     parser.add_argument(
-        "--seed", type=int, default=None,
+        "--seed",
+        type=int,
+        default=None,
         help="Random seed for reproducibility (default: None)",
-    )
-    parser.add_argument(
-        "--sample-rate", type=int, default=16000,
-        help="Output sample rate in Hz (default: 16000)",
     )
     args = parser.parse_args()
 
@@ -137,12 +148,12 @@ def main():
         # Move to CPU for saving
         audio_out = audio_out.cpu()
 
-        # Save output
+        # Save output - VAE always outputs at 16kHz
         output_path = output_dir / f"{audio_path.stem}_converted.wav"
         torchaudio.save(
             str(output_path),
             audio_out.unsqueeze(0),  # (1, samples) for torchaudio
-            args.sample_rate,
+            16000,  # VAE output sample rate is always 16kHz
         )
         print(f"  Saved: {output_path}")
 

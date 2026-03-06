@@ -1,12 +1,13 @@
 """Dataset and DataLoader for VAE and DiT training."""
 
 import json
-import torch
-import torchaudio
-import torch.nn.functional as F
-from torch.utils.data import Dataset
-from pathlib import Path
 import random
+from pathlib import Path
+
+import torch
+import torch.nn.functional as F
+import torchaudio
+from torch.utils.data import Dataset
 
 
 class VAEDataset(Dataset):
@@ -102,9 +103,7 @@ class DiTDataset(Dataset):
             self.manifest = json.load(f)
 
         # Filter out entries without VAE latent
-        self.manifest = [
-            item for item in self.manifest if item.get("vae_z1_path") is not None
-        ]
+        self.manifest = [item for item in self.manifest if item.get("vae_z1_path") is not None]
 
         if len(self.manifest) == 0:
             raise ValueError(
@@ -145,7 +144,7 @@ class DiTDataset(Dataset):
             whisper_h = whisper_h[start_w:end_w]
 
         return {
-            "z1": z1,                # (64, L)
+            "z1": z1,  # (64, L)
             "whisper_h": whisper_h,  # (T_w, 512)
             "speaker_emb": speaker_emb,  # (192,)
         }

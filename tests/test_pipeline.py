@@ -1,14 +1,13 @@
 """Integration tests for inference and evaluation pipelines."""
+
+import numpy as np
 import pytest
 import torch
-import numpy as np
 
-from floww2n.models.vae import AudioAutoencoder
-from floww2n.models.floww2n import FlowW2NModel
 from floww2n.inference.pipeline import FlowW2NPipeline
 from floww2n.inference.sampler import euler_solve, euler_solve_with_trajectory
-from floww2n.evaluation.metrics import SpkSimMetric
-
+from floww2n.models.floww2n import FlowW2NModel
+from floww2n.models.vae import AudioAutoencoder
 
 # Use small configs for all tests
 SMALL_VAE_CONFIG = {
@@ -24,7 +23,7 @@ SMALL_VAE_CONFIG = {
 SMALL_DIT_CONFIG = {
     "io_channels": 64,
     "embed_dim": 128,  # small
-    "depth": 2,        # small
+    "depth": 2,  # small
     "num_heads": 4,
     "head_dim": 32,
     "cond_token_dim": 512,
@@ -173,9 +172,7 @@ class TestFlowW2NPipeline:
         out1 = pipeline(audio, sample_rate=16000, num_steps=2, seed=42)
         out2 = pipeline(audio, sample_rate=16000, num_steps=2, seed=42)
 
-        assert torch.allclose(out1, out2, atol=1e-5), (
-            "Same seed should produce identical output"
-        )
+        assert torch.allclose(out1, out2, atol=1e-5), "Same seed should produce identical output"
 
     def test_pipeline_different_lengths(self):
         """Pipeline handles different audio lengths."""
@@ -217,9 +214,7 @@ class TestEulerSampler:
         whisper_h = torch.randn(B, T_WHISPER, 512)
         speaker_emb = torch.randn(B, SPEAKER_DIM)
 
-        z1 = euler_solve(
-            model, z0, whisper_h, speaker_emb, num_steps=3
-        )
+        z1 = euler_solve(model, z0, whisper_h, speaker_emb, num_steps=3)
 
         assert z1.shape == (B, 64, T_LATENT)
         # Output should be finite (no NaN or Inf)
@@ -257,9 +252,7 @@ class TestEulerSampler:
         whisper_h = torch.randn(B, T_WHISPER, 512)
         speaker_emb = torch.randn(B, SPEAKER_DIM)
 
-        z1_solve = euler_solve(
-            model, z0.clone(), whisper_h, speaker_emb, num_steps=num_steps
-        )
+        z1_solve = euler_solve(model, z0.clone(), whisper_h, speaker_emb, num_steps=num_steps)
         trajectory = euler_solve_with_trajectory(
             model, z0.clone(), whisper_h, speaker_emb, num_steps=num_steps
         )
@@ -281,22 +274,19 @@ class TestEvaluationMetrics:
         emb_b = np.random.randn(192).astype(np.float32)
 
         # Compute cosine similarity manually
-        cos_sim = np.dot(emb_a, emb_b) / (
-            np.linalg.norm(emb_a) * np.linalg.norm(emb_b) + 1e-8
-        )
+        cos_sim = np.dot(emb_a, emb_b) / (np.linalg.norm(emb_a) * np.linalg.norm(emb_b) + 1e-8)
 
         assert -1.0 <= cos_sim <= 1.0
 
         # Same embedding should give similarity ~1.0
-        cos_sim_same = np.dot(emb_a, emb_a) / (
-            np.linalg.norm(emb_a) * np.linalg.norm(emb_a) + 1e-8
-        )
+        cos_sim_same = np.dot(emb_a, emb_a) / (np.linalg.norm(emb_a) * np.linalg.norm(emb_a) + 1e-8)
         assert abs(cos_sim_same - 1.0) < 1e-5
 
     def test_dnsmos_fallback(self):
         """DNSMOS returns NaN when no ONNX dir is provided."""
-        from floww2n.evaluation.metrics import DNSMOSMetric
         import math
+
+        from floww2n.evaluation.metrics import DNSMOSMetric
 
         metric = DNSMOSMetric(onnx_model_dir=None)
         dummy_audio = np.random.randn(16000).astype(np.float32)
@@ -309,8 +299,9 @@ class TestEvaluationMetrics:
 
     def test_dnsmos_batch_fallback(self):
         """DNSMOS batch returns list of NaN when no ONNX dir is provided."""
-        from floww2n.evaluation.metrics import DNSMOSMetric
         import math
+
+        from floww2n.evaluation.metrics import DNSMOSMetric
 
         metric = DNSMOSMetric(onnx_model_dir=None)
         batch_audio = np.random.randn(3, 16000).astype(np.float32)
@@ -379,8 +370,9 @@ class TestIntegration:
 
     def test_evaluation_save_results(self, tmp_path):
         """EvaluationPipeline.save_results writes valid JSON."""
-        from floww2n.evaluation.evaluate import EvaluationPipeline
         import json
+
+        from floww2n.evaluation.evaluate import EvaluationPipeline
 
         results = {
             "per_file": [
@@ -401,7 +393,7 @@ class TestIntegration:
         EvaluationPipeline.save_results(results, str(output_file))
 
         assert output_file.exists()
-        with open(output_file, "r") as f:
+        with open(output_file) as f:
             loaded = json.load(f)
         assert loaded["summary"]["utmos"] == 3.35
         assert len(loaded["per_file"]) == 2

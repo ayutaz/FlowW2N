@@ -28,7 +28,7 @@ References:
 """
 
 import random
-from typing import Callable, List, Optional
+from collections.abc import Callable
 
 import numpy as np
 from scipy import signal
@@ -331,9 +331,7 @@ def formant_bandwidth_mod(
     return output
 
 
-def praat_whisperize(
-    audio: np.ndarray, sr: int = 16000, lpc_order: int = 16
-) -> np.ndarray:
+def praat_whisperize(audio: np.ndarray, sr: int = 16000, lpc_order: int = 16) -> np.ndarray:
     """
     Praat-based whisperization using parselmouth library.
 
@@ -352,11 +350,10 @@ def praat_whisperize(
     try:
         import parselmouth
         from parselmouth.praat import call
-    except ImportError:
+    except ImportError as err:
         raise ImportError(
-            "parselmouth is required for praat_whisperize. "
-            "Install with: uv add praat-parselmouth"
-        )
+            "parselmouth is required for praat_whisperize. Install with: uv add praat-parselmouth"
+        ) from err
 
     audio = audio.astype(np.float64)  # Parselmouth expects float64
     original_length = len(audio)
@@ -422,9 +419,7 @@ def praat_whisperize(
     except Exception as e:
         # Fallback to glottal source removal if Praat processing fails
         print(f"Praat whisperization failed: {e}. Falling back to glottal removal.")
-        result = glottal_source_removal(
-            audio.astype(np.float32), sr=sr, lpc_order=lpc_order
-        )
+        result = glottal_source_removal(audio.astype(np.float32), sr=sr, lpc_order=lpc_order)
         if len(result) != original_length:
             if len(result) > original_length:
                 result = result[:original_length]
@@ -447,7 +442,7 @@ class WhisperSynthesizer:
     def __init__(
         self,
         sr: int = 16000,
-        methods: Optional[List[Callable]] = None,
+        methods: list[Callable] | None = None,
     ):
         """
         Initialize synthesizer.
@@ -468,9 +463,7 @@ class WhisperSynthesizer:
         else:
             self.methods = methods
 
-    def __call__(
-        self, audio: np.ndarray, method_index: Optional[int] = None
-    ) -> np.ndarray:
+    def __call__(self, audio: np.ndarray, method_index: int | None = None) -> np.ndarray:
         """
         Synthesize whispered speech from normal speech.
 
@@ -528,7 +521,7 @@ if __name__ == "__main__":
         elapsed = time.time() - start
         print(
             f"{name}: input={len(audio)}, output={len(result)}, "
-            f"match={len(audio)==len(result)}, time={elapsed:.3f}s"
+            f"match={len(audio) == len(result)}, time={elapsed:.3f}s"
         )
 
     print("\nTesting WhisperSynthesizer:")

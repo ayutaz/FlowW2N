@@ -2,6 +2,7 @@
 """Script: Train DiT with conditional flow matching."""
 
 import argparse
+
 from floww2n.training.train_dit import train_dit
 
 

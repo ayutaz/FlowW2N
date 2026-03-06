@@ -12,7 +12,6 @@ Architecture based on stable-audio-tools discriminators.py
 Configuration matches SA2.0 with 7 STFT scales and 3-scale discriminator.
 """
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -79,7 +78,7 @@ class SharedDiscriminatorConvNet(nn.Module):
         super().__init__()
 
         # Build channel progression: [in_channels, capacity, capacity*2, capacity*4, ...]
-        channels = [in_channels] + [capacity * (2 ** i) for i in range(n_layers)]
+        channels = [in_channels] + [capacity * (2**i) for i in range(n_layers)]
 
         # Build discriminator layers
         layers = []
@@ -89,12 +88,7 @@ class SharedDiscriminatorConvNet(nn.Module):
             padding = kernel_size // 2
 
             # Conv with weight normalization
-            conv = nn.Conv1d(
-                in_ch, out_ch,
-                kernel_size=kernel_size,
-                stride=stride,
-                padding=padding
-            )
+            conv = nn.Conv1d(in_ch, out_ch, kernel_size=kernel_size, stride=stride, padding=padding)
             conv = nn.utils.weight_norm(conv)
             layers.append(conv)
 
@@ -194,8 +188,7 @@ class MultiScaleDiscriminator(nn.Module):
 
 
 def hinge_loss_discriminator(
-    real_scores: list[torch.Tensor],
-    fake_scores: list[torch.Tensor]
+    real_scores: list[torch.Tensor], fake_scores: list[torch.Tensor]
 ) -> torch.Tensor:
     """
     Hinge loss for discriminator.
@@ -243,8 +236,7 @@ def hinge_loss_generator(fake_scores: list[torch.Tensor]) -> torch.Tensor:
 
 
 def feature_matching_loss(
-    real_features_list: list[list[torch.Tensor]],
-    fake_features_list: list[list[torch.Tensor]]
+    real_features_list: list[list[torch.Tensor]], fake_features_list: list[list[torch.Tensor]]
 ) -> torch.Tensor:
     """
     Feature matching loss.
@@ -264,7 +256,7 @@ def feature_matching_loss(
 
     for real_features, fake_features in zip(real_features_list, fake_features_list):
         for real_feat, fake_feat in zip(real_features, fake_features):
-            loss += F.l1_loss(fake_feat, real_feat)
+            loss += F.l1_loss(fake_feat, real_feat.detach())
             count += 1
 
     # Average over all features
@@ -308,10 +300,7 @@ class VAELoss(nn.Module):
         )
 
     def generator_loss(
-        self,
-        real: torch.Tensor,
-        fake: torch.Tensor,
-        kl_loss: torch.Tensor
+        self, real: torch.Tensor, fake: torch.Tensor, kl_loss: torch.Tensor
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """
         Compute generator (VAE encoder-decoder) loss.
@@ -329,12 +318,11 @@ class VAELoss(nn.Module):
         stft = self.stft_loss(real, fake)
 
         # 2. Adversarial loss (generator wants high scores)
+        # Get real features for feature matching (no gradient needed for real)
         with torch.no_grad():
-            # Don't compute gradients for discriminator during generator update
-            fake_scores, fake_features = self.discriminator(fake.detach())
-        real_scores, real_features = self.discriminator(real)
+            real_scores, real_features = self.discriminator(real)
 
-        # Re-enable gradients for fake
+        # Get fake features with gradients for generator update
         fake_scores_grad, fake_features_grad = self.discriminator(fake)
 
         adv = hinge_loss_generator(fake_scores_grad)
@@ -344,10 +332,10 @@ class VAELoss(nn.Module):
 
         # 4. Weighted combination
         total_loss = (
-            self.stft_weight * stft +
-            self.adv_weight * adv +
-            self.feat_weight * feat +
-            self.kl_weight * kl_loss
+            self.stft_weight * stft
+            + self.adv_weight * adv
+            + self.feat_weight * feat
+            + self.kl_weight * kl_loss
         )
 
         loss_dict = {
@@ -361,9 +349,7 @@ class VAELoss(nn.Module):
         return total_loss, loss_dict
 
     def discriminator_loss(
-        self,
-        real: torch.Tensor,
-        fake: torch.Tensor
+        self, real: torch.Tensor, fake: torch.Tensor
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         """
         Compute discriminator loss.
@@ -397,12 +383,7 @@ if __name__ == "__main__":
     print("=" * 60)
 
     # Initialize loss
-    vae_loss = VAELoss(
-        stft_weight=1.0,
-        adv_weight=0.1,
-        feat_weight=5.0,
-        kl_weight=1e-4
-    )
+    vae_loss = VAELoss(stft_weight=1.0, adv_weight=0.1, feat_weight=5.0, kl_weight=1e-4)
 
     # Create dummy data
     batch_size = 2
@@ -411,7 +392,7 @@ if __name__ == "__main__":
     fake = torch.randn(batch_size, 1, length)
     kl = torch.tensor(0.01)
 
-    print(f"\nInput shapes:")
+    print("\nInput shapes:")
     print(f"  Real: {real.shape}")
     print(f"  Fake: {fake.shape}")
     print(f"  KL: {kl.item():.6f}")

@@ -28,9 +28,7 @@ def euler_solve(model, z0, whisper_h, speaker_emb, num_steps=10, progress=False)
             print(f"  Euler step {i + 1}/{num_steps} (t={i * dt:.3f})")
 
         t_scalar = i * dt
-        t = torch.full(
-            (z.shape[0],), t_scalar, device=z.device, dtype=z.dtype
-        )
+        t = torch.full((z.shape[0],), t_scalar, device=z.device, dtype=z.dtype)
 
         # Predict velocity at current state and timestep
         with torch.no_grad():
@@ -68,9 +66,7 @@ def euler_solve_with_trajectory(model, z0, whisper_h, speaker_emb, num_steps=10)
 
     for i in range(num_steps):
         t_scalar = i * dt
-        t = torch.full(
-            (z.shape[0],), t_scalar, device=z.device, dtype=z.dtype
-        )
+        t = torch.full((z.shape[0],), t_scalar, device=z.device, dtype=z.dtype)
 
         # Predict velocity at current state and timestep
         with torch.no_grad():

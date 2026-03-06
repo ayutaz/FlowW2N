@@ -2,6 +2,7 @@
 
 import pytest
 import torch
+
 from floww2n.models.vae import AudioAutoencoder
 
 

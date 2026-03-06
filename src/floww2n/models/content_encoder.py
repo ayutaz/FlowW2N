@@ -2,7 +2,7 @@
 
 import torch
 import torch.nn as nn
-from transformers import WhisperModel, WhisperFeatureExtractor
+from transformers import WhisperFeatureExtractor, WhisperModel
 
 
 class ContentEncoder(nn.Module):
@@ -19,6 +19,7 @@ class ContentEncoder(nn.Module):
 
         # Load model and feature extractor
         self.model = WhisperModel.from_pretrained(model_name)
+        self.model = self.model.to(device)  # Move to specified device (e.g. GPU)
         self.feature_extractor = WhisperFeatureExtractor.from_pretrained(model_name)
 
         # Freeze all parameters
@@ -93,6 +94,7 @@ class ContentEncoder(nn.Module):
 
 if __name__ == "__main__":
     import numpy as np
+
     encoder = ContentEncoder()
     # ダミー入力 (3秒の音声)
     audio = np.random.randn(2, 48000).astype(np.float32)

@@ -5,33 +5,31 @@ from __future__ import annotations
 import math
 import warnings
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _to_numpy(audio: Union[np.ndarray, torch.Tensor]) -> np.ndarray:
+
+def _to_numpy(audio: np.ndarray | torch.Tensor) -> np.ndarray:
     """Convert audio to numpy float32 array."""
     if isinstance(audio, torch.Tensor):
         return audio.detach().cpu().float().numpy()
     return np.asarray(audio, dtype=np.float32)
 
 
-def _to_tensor(audio: Union[np.ndarray, torch.Tensor],
-               device: str = "cpu") -> torch.Tensor:
+def _to_tensor(audio: np.ndarray | torch.Tensor, device: str = "cpu") -> torch.Tensor:
     """Convert audio to torch float32 tensor on *device*."""
     if isinstance(audio, np.ndarray):
         return torch.from_numpy(audio).float().to(device)
     return audio.float().to(device)
 
 
-def _ensure_batch(audio: Union[np.ndarray, torch.Tensor]):
+def _ensure_batch(audio: np.ndarray | torch.Tensor):
     """Ensure audio has a batch dimension (batch, samples)."""
     if isinstance(audio, torch.Tensor):
         if audio.dim() == 1:
@@ -45,6 +43,7 @@ def _ensure_batch(audio: Union[np.ndarray, torch.Tensor]):
 # =========================================================================
 # WER (Word Error Rate)
 # =========================================================================
+
 
 class WERMetric:
     """Word Error Rate computation using ASR models.
@@ -78,7 +77,7 @@ class WERMetric:
 
     def _load_model(self) -> None:
         """Lazy-load the ASR model and processor."""
-        from transformers import WhisperProcessor, WhisperForConditionalGeneration
+        from transformers import WhisperForConditionalGeneration, WhisperProcessor
 
         model_id = self._MODEL_IDS[self.mode]
         self._processor = WhisperProcessor.from_pretrained(model_id)
@@ -86,8 +85,7 @@ class WERMetric:
         self._model.to(self.device).eval()
 
     @torch.no_grad()
-    def transcribe(self, audio: Union[np.ndarray, torch.Tensor],
-                   sample_rate: int = 16000) -> list[str]:
+    def transcribe(self, audio: np.ndarray | torch.Tensor, sample_rate: int = 16000) -> list[str]:
         """Transcribe audio to text.
 
         Args:
@@ -117,7 +115,8 @@ class WERMetric:
             input_features = inputs.input_features.to(self.device)
             # Force English decoding
             forced_decoder_ids = self._processor.get_decoder_prompt_ids(
-                language="en", task="transcribe",
+                language="en",
+                task="transcribe",
             )
             generated_ids = self._model.generate(
                 input_features,
@@ -125,15 +124,16 @@ class WERMetric:
                 max_new_tokens=448,
             )
             text = self._processor.batch_decode(
-                generated_ids, skip_special_tokens=True,
+                generated_ids,
+                skip_special_tokens=True,
             )[0].strip()
             transcriptions.append(text)
 
         return transcriptions
 
-    def compute(self, audio: Union[np.ndarray, torch.Tensor],
-                references: list[str],
-                sample_rate: int = 16000) -> float:
+    def compute(
+        self, audio: np.ndarray | torch.Tensor, references: list[str], sample_rate: int = 16000
+    ) -> float:
         """Compute WER between transcribed audio and reference texts.
 
         Args:
@@ -161,6 +161,7 @@ class WERMetric:
 # UTMOS
 # =========================================================================
 
+
 class UTMOSMetric:
     """UTMOS (Universal Text-independent MOS prediction).
 
@@ -184,15 +185,13 @@ class UTMOSMetric:
             self._model.to(self.device).eval()
         except Exception as exc:
             warnings.warn(
-                f"Failed to load UTMOS model via torch.hub: {exc}. "
-                "UTMOS scores will be NaN.",
+                f"Failed to load UTMOS model via torch.hub: {exc}. UTMOS scores will be NaN.",
                 stacklevel=2,
             )
             self._model = "fallback"
 
     @torch.no_grad()
-    def compute(self, audio: Union[np.ndarray, torch.Tensor],
-                sample_rate: int = 16000) -> torch.Tensor:
+    def compute(self, audio: np.ndarray | torch.Tensor, sample_rate: int = 16000) -> torch.Tensor:
         """Compute UTMOS score(s).
 
         Args:
@@ -223,6 +222,7 @@ class UTMOSMetric:
 # DNSMOS
 # =========================================================================
 
+
 class DNSMOSMetric:
     """DNSMOS (Deep Noise Suppression MOS) prediction.
 
@@ -242,8 +242,7 @@ class DNSMOSMetric:
     _TARGET_SR = 16000
     _INPUT_LENGTH = 9.01  # seconds
 
-    def __init__(self, onnx_model_dir: Optional[str] = None,
-                 device: str = "cpu"):
+    def __init__(self, onnx_model_dir: str | None = None, device: str = "cpu"):
         """
         Args:
             onnx_model_dir: Directory containing the DNSMOS ONNX model file(s).
@@ -281,8 +280,7 @@ class DNSMOSMetric:
         model_path = self.onnx_model_dir / "sig_bak_ovr.onnx"
         if not model_path.exists():
             warnings.warn(
-                f"DNSMOS ONNX model not found at {model_path}. "
-                "Returning NaN scores.",
+                f"DNSMOS ONNX model not found at {model_path}. Returning NaN scores.",
                 stacklevel=2,
             )
             self._session = "fallback"
@@ -292,7 +290,8 @@ class DNSMOSMetric:
         so.inter_op_num_threads = 1
         so.intra_op_num_threads = 1
         self._session = ort.InferenceSession(
-            str(model_path), sess_options=so,
+            str(model_path),
+            sess_options=so,
         )
 
     def _run_onnx(self, audio_segment: np.ndarray) -> dict[str, float]:
@@ -308,7 +307,8 @@ class DNSMOSMetric:
         target_len = int(self._TARGET_SR * self._INPUT_LENGTH)
         if len(audio_segment) < target_len:
             audio_segment = np.pad(
-                audio_segment, (0, target_len - len(audio_segment)),
+                audio_segment,
+                (0, target_len - len(audio_segment)),
             )
         else:
             audio_segment = audio_segment[:target_len]
@@ -323,8 +323,9 @@ class DNSMOSMetric:
         # Fallback for single-output models
         return {"sig": float("nan"), "bak": float("nan"), "ovrl": float(out[0])}
 
-    def compute(self, audio: Union[np.ndarray, torch.Tensor],
-                sample_rate: int = 16000) -> dict[str, Union[float, list[float]]]:
+    def compute(
+        self, audio: np.ndarray | torch.Tensor, sample_rate: int = 16000
+    ) -> dict[str, float | list[float]]:
         """Compute DNSMOS score(s).
 
         Args:
@@ -360,15 +361,13 @@ class DNSMOSMetric:
         if len(results) == 1:
             return results[0]
 
-        return {
-            key: [r[key] for r in results]
-            for key in ("ovrl", "sig", "bak")
-        }
+        return {key: [r[key] for r in results] for key in ("ovrl", "sig", "bak")}
 
 
 # =========================================================================
 # SpkSim (Speaker Similarity)
 # =========================================================================
+
 
 class SpkSimMetric:
     """Speaker similarity using ECAPA-TDNN cosine similarity.
@@ -393,9 +392,12 @@ class SpkSimMetric:
         self._encoder = SpeakerEncoder(device=self.device)
 
     @torch.no_grad()
-    def compute(self, audio_a: Union[np.ndarray, torch.Tensor],
-                audio_b: Union[np.ndarray, torch.Tensor],
-                sample_rate: int = 16000) -> float:
+    def compute(
+        self,
+        audio_a: np.ndarray | torch.Tensor,
+        audio_b: np.ndarray | torch.Tensor,
+        sample_rate: int = 16000,
+    ) -> float:
         """Compute speaker similarity between two audio signals.
 
         Args:
@@ -427,9 +429,12 @@ class SpkSimMetric:
         return float(similarity.squeeze())
 
     @torch.no_grad()
-    def compute_batch(self, audios_a: list[Union[np.ndarray, torch.Tensor]],
-                      audios_b: list[Union[np.ndarray, torch.Tensor]],
-                      sample_rate: int = 16000) -> list[float]:
+    def compute_batch(
+        self,
+        audios_a: list[np.ndarray | torch.Tensor],
+        audios_b: list[np.ndarray | torch.Tensor],
+        sample_rate: int = 16000,
+    ) -> list[float]:
         """Compute speaker similarity for multiple pairs.
 
         Args:
@@ -441,18 +446,14 @@ class SpkSimMetric:
             List of cosine similarity scores.
         """
         if len(audios_a) != len(audios_b):
-            raise ValueError(
-                f"Mismatched list lengths: {len(audios_a)} vs {len(audios_b)}"
-            )
-        return [
-            self.compute(a, b, sample_rate)
-            for a, b in zip(audios_a, audios_b)
-        ]
+            raise ValueError(f"Mismatched list lengths: {len(audios_a)} vs {len(audios_b)}")
+        return [self.compute(a, b, sample_rate) for a, b in zip(audios_a, audios_b)]
 
 
 # =========================================================================
 # FlowW2NMetrics (bundled convenience class)
 # =========================================================================
+
 
 class FlowW2NMetrics:
     """Convenience class that bundles all FlowW2N evaluation metrics.
@@ -476,8 +477,7 @@ class FlowW2NMetrics:
         # }
     """
 
-    def __init__(self, device: str = "cpu",
-                 dnsmos_onnx_dir: Optional[str] = None):
+    def __init__(self, device: str = "cpu", dnsmos_onnx_dir: str | None = None):
         self.wer_n = WERMetric(mode="normal", device=device)
         self.wer_w = WERMetric(mode="whisper", device=device)
         self.utmos = UTMOSMetric(device=device)
@@ -486,9 +486,9 @@ class FlowW2NMetrics:
 
     def evaluate(
         self,
-        converted_audio: Union[np.ndarray, torch.Tensor],
-        reference_audio: Optional[Union[np.ndarray, torch.Tensor]] = None,
-        reference_text: Optional[Union[str, list[str]]] = None,
+        converted_audio: np.ndarray | torch.Tensor,
+        reference_audio: np.ndarray | torch.Tensor | None = None,
+        reference_text: str | list[str] | None = None,
         sample_rate: int = 16000,
     ) -> dict[str, float]:
         """Run all available metrics.
@@ -515,14 +515,18 @@ class FlowW2NMetrics:
                 reference_text = [reference_text]
             try:
                 results["wer_n"] = self.wer_n.compute(
-                    converted_audio, reference_text, sample_rate,
+                    converted_audio,
+                    reference_text,
+                    sample_rate,
                 )
             except Exception as exc:
                 warnings.warn(f"WER-N computation failed: {exc}", stacklevel=2)
 
             try:
                 results["wer_w"] = self.wer_w.compute(
-                    converted_audio, reference_text, sample_rate,
+                    converted_audio,
+                    reference_text,
+                    sample_rate,
                 )
             except Exception as exc:
                 warnings.warn(f"WER-W computation failed: {exc}", stacklevel=2)
@@ -550,7 +554,9 @@ class FlowW2NMetrics:
         if reference_audio is not None:
             try:
                 results["spk_sim"] = self.spk_sim.compute(
-                    converted_audio, reference_audio, sample_rate,
+                    converted_audio,
+                    reference_audio,
+                    sample_rate,
                 )
             except Exception as exc:
                 warnings.warn(f"SpkSim computation failed: {exc}", stacklevel=2)

@@ -46,9 +46,18 @@ class FlowW2NModel(nn.Module):
 
         # Filter dit_config to only include keys accepted by DiffusionTransformer
         _dit_keys = {
-            "io_channels", "embed_dim", "depth", "num_heads", "head_dim",
-            "cond_token_dim", "global_cond_dim", "ff_mult", "dropout",
-            "cross_attend", "num_fourier_features",
+            "io_channels",
+            "embed_dim",
+            "depth",
+            "num_heads",
+            "head_dim",
+            "cond_token_dim",
+            "global_cond_dim",
+            "ff_mult",
+            "dropout",
+            "cross_attend",
+            "num_fourier_features",
+            "gradient_checkpointing",
         }
         filtered_config = {k: v for k, v in dit_config.items() if k in _dit_keys}
 
@@ -101,20 +110,14 @@ class FlowW2NModel(nn.Module):
 
         return v_pred
 
-    def compute_loss(self, z1, whisper_h, speaker_emb):
+    def compute_loss(self, z1, whisper_h, speaker_emb, z1_mask=None):
         """Compute CFM training loss.
-
-        Implements the Conditional Flow Matching objective:
-        1. Sample z0 ~ N(0, I)
-        2. Sample t ~ U[0, 1]
-        3. Compute interpolation: zt = (1-t)*z0 + t*z1
-        4. Target velocity: v_target = z1 - z0
-        5. Loss = MSE(v_theta(zt, t, cond), v_target)
 
         Args:
             z1: Target VAE latent (B, 64, T) - clean normal speech latent
             whisper_h: Whisper content features (B, T_w, 512)
             speaker_emb: Speaker embedding (B, 192)
+            z1_mask: Optional padding mask (B, T), True = valid frames
 
         Returns:
             loss: Scalar MSE loss
@@ -141,8 +144,15 @@ class FlowW2NModel(nn.Module):
         # Predict velocity
         v_pred = self.forward(zt, t, whisper_h, speaker_emb)
 
-        # MSE loss
-        loss = F.mse_loss(v_pred, v_target)
+        # MSE loss with optional masking
+        if z1_mask is not None:
+            # z1_mask: (B, T) -> (B, 1, T) for broadcasting with (B, D, T)
+            mask_expanded = z1_mask.unsqueeze(1).float()
+            diff_sq = (v_pred - v_target) ** 2
+            # Mean over valid elements only
+            loss = (diff_sq * mask_expanded).sum() / (mask_expanded.sum() * v_pred.shape[1])
+        else:
+            loss = F.mse_loss(v_pred, v_target)
 
         loss_dict = {
             "cfm_loss": loss.detach(),
@@ -172,9 +182,7 @@ class FlowW2NModel(nn.Module):
         for i in range(num_steps):
             # Current timestep as scalar, then expand to batch
             t_scalar = i * dt
-            t = torch.full(
-                (z.shape[0],), t_scalar, device=z.device, dtype=z.dtype
-            )
+            t = torch.full((z.shape[0],), t_scalar, device=z.device, dtype=z.dtype)
 
             # Predict velocity at current state and timestep
             v = self.forward(z, t, whisper_h, speaker_emb)
@@ -190,11 +198,9 @@ if __name__ == "__main__":
     import os
 
     # Load DiT config
-    config_path = os.path.join(
-        os.path.dirname(__file__), "..", "..", "..", "configs", "dit.json"
-    )
+    config_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "configs", "dit.json")
     if os.path.exists(config_path):
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             full_config = json.load(f)
         dit_config = full_config["model"]
         print(f"Loaded config from {config_path}")
@@ -235,7 +241,7 @@ if __name__ == "__main__":
     # Test forward pass
     t = torch.rand(batch_size)
     v_pred = model(z1, t, whisper_h, speaker_emb)
-    print(f"\n--- Forward pass ---")
+    print("\n--- Forward pass ---")
     print(f"z1 shape: {z1.shape}")
     print(f"t shape: {t.shape}")
     print(f"whisper_h shape: {whisper_h.shape}")
@@ -245,14 +251,14 @@ if __name__ == "__main__":
 
     # Test compute_loss
     loss, loss_dict = model.compute_loss(z1, whisper_h, speaker_emb)
-    print(f"\n--- Compute loss ---")
+    print("\n--- Compute loss ---")
     print(f"CFM loss: {loss.item():.6f}")
     print(f"Loss dict: {loss_dict}")
 
     # Test sampling
     z0 = torch.randn(batch_size, 64, latent_T)
     z1_pred = model.sample(z0, whisper_h, speaker_emb, num_steps=10)
-    print(f"\n--- Sampling (10 Euler steps) ---")
+    print("\n--- Sampling (10 Euler steps) ---")
     print(f"z0 shape: {z0.shape}")
     print(f"z1_pred shape: {z1_pred.shape}")
     assert z1_pred.shape == z0.shape, f"Shape mismatch: {z1_pred.shape} != {z0.shape}"

@@ -2,6 +2,7 @@
 """Script: Launch VAE training."""
 
 import argparse
+
 from floww2n.training.train_vae import train_vae
 
 
@@ -13,9 +14,7 @@ def main():
         default="configs/vae.json",
         help="Path to VAE config JSON",
     )
-    parser.add_argument(
-        "--data-dir", type=str, required=True, help="Path to audio data directory"
-    )
+    parser.add_argument("--data-dir", type=str, required=True, help="Path to audio data directory")
     parser.add_argument(
         "--output-dir",
         type=str,

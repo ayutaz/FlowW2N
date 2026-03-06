@@ -99,14 +99,22 @@ tests/                 # テスト (18 tests passing)
 | M1: VAE | ✅ 完了 | Oobleck VAE, 損失関数, 学習スクリプト |
 | M2: 条件付け | ✅ 完了 | Whisper/ECAPA encoder, 合成ウィスパー, キャッシュ |
 | M3: DiT・CFM | ✅ 完了 | DiffusionTransformer, FlowW2NModel, 学習スクリプト |
-| M4: 推論・評価 | 🔲 未着手 | FlowW2NPipeline, 評価指標, 統合テスト |
+| M4: 推論・評価 | ✅ 完了 | FlowW2NPipeline, 評価指標, 統合テスト |
+| 品質監査 | ✅ 完了 | ruff lint/format, バグ修正, テスト追加, 最適化 |
 
 ## テスト実行
 
 ```bash
-uv run pytest tests/ -v   # 全テスト実行 (18 tests)
-uv run pytest tests/test_vae.py -v  # VAE テストのみ
-uv run pytest tests/test_dit.py -v  # DiT テストのみ
+uv run pytest tests/ -v   # 全テスト実行 (72 tests)
+uv run pytest tests/test_vae.py -v  # VAE テストのみ (9)
+uv run pytest tests/test_dit.py -v  # DiT テストのみ (9)
+uv run pytest tests/test_losses.py -v  # 損失関数テスト (12)
+uv run pytest tests/test_pipeline.py -v  # パイプラインテスト (16)
+uv run pytest tests/test_dataset.py -v  # データセットテスト (7)
+uv run pytest tests/test_whisper_synthesis.py -v  # 合成ウィスパーテスト (11)
+uv run pytest tests/test_training.py -v  # 学習テスト (8)
+uv run ruff check src/ tests/ scripts/  # lint チェック
+uv run ruff format --check src/ tests/ scripts/  # フォーマットチェック
 ```
 
 ## 学習実行

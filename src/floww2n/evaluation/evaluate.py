@@ -1,10 +1,11 @@
 """Evaluation pipeline runner."""
 
 import json
+from pathlib import Path
+
+import numpy as np
 import torch
 import torchaudio
-import numpy as np
-from pathlib import Path
 from tqdm import tqdm
 
 
@@ -34,6 +35,7 @@ class EvaluationPipeline:
             sample_rate: Expected audio sample rate
         """
         from floww2n.evaluation.metrics import FlowW2NMetrics
+
         self.metrics = FlowW2NMetrics(device=device, dnsmos_onnx_dir=dnsmos_onnx_dir)
         self.sample_rate = sample_rate
 
@@ -54,15 +56,12 @@ class EvaluationPipeline:
 
         # Resample if necessary
         if sr != self.sample_rate:
-            resampler = torchaudio.transforms.Resample(
-                orig_freq=sr, new_freq=self.sample_rate
-            )
+            resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=self.sample_rate)
             waveform = resampler(waveform)
 
         return waveform.numpy()
 
-    def evaluate_single(self, converted_audio, reference_audio=None,
-                        reference_text=None):
+    def evaluate_single(self, converted_audio, reference_audio=None, reference_text=None):
         """Evaluate a single converted audio sample.
 
         Args:
@@ -82,8 +81,7 @@ class EvaluationPipeline:
             sample_rate=self.sample_rate,
         )
 
-    def evaluate_directory(self, converted_dir, reference_dir=None,
-                           transcript_file=None):
+    def evaluate_directory(self, converted_dir, reference_dir=None, transcript_file=None):
         """Evaluate all files in a directory.
 
         Args:
@@ -103,7 +101,7 @@ class EvaluationPipeline:
         # Load transcripts if provided
         transcripts = {}
         if transcript_file is not None:
-            with open(transcript_file, "r", encoding="utf-8") as f:
+            with open(transcript_file, encoding="utf-8") as f:
                 transcripts = json.load(f)
 
         # Find converted audio files
@@ -114,9 +112,7 @@ class EvaluationPipeline:
         converted_files.sort()
 
         if not converted_files:
-            raise FileNotFoundError(
-                f"No audio files found in {converted_dir}"
-            )
+            raise FileNotFoundError(f"No audio files found in {converted_dir}")
 
         per_file_results = []
 
@@ -274,9 +270,6 @@ class EvaluationPipeline:
                             f"(+/- {std_val * 100:.2f}%, n={count})"
                         )
                     else:
-                        print(
-                            f"    {key:>15s}: {mean_val:6.4f} "
-                            f"(+/- {std_val:.4f}, n={count})"
-                        )
+                        print(f"    {key:>15s}: {mean_val:6.4f} (+/- {std_val:.4f}, n={count})")
 
         print("\n" + "=" * 60)

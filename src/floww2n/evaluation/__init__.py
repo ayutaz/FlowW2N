@@ -1,7 +1,7 @@
 """FlowW2N evaluation package."""
 
-from .metrics import FlowW2NMetrics, WERMetric, UTMOSMetric, DNSMOSMetric, SpkSimMetric
 from .evaluate import EvaluationPipeline
+from .metrics import DNSMOSMetric, FlowW2NMetrics, SpkSimMetric, UTMOSMetric, WERMetric
 
 __all__ = [
     "FlowW2NMetrics",

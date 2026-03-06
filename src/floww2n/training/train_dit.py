@@ -10,12 +10,12 @@ Trains the FlowW2NModel (DiT backbone + speaker projection) using:
 """
 
 import json
-import math
-import torch
-from torch.utils.data import DataLoader
 from pathlib import Path
-from ema_pytorch import EMA
+
+import torch
 import wandb
+from ema_pytorch import EMA
+from torch.utils.data import DataLoader
 
 from floww2n.models.floww2n import FlowW2NModel
 from floww2n.training.dataset import DiTDataset, dit_collate_fn
@@ -101,11 +101,12 @@ def train_dit(config_path, cache_dir, output_dir, vae_checkpoint=None, resume_fr
         pin_memory=True,
         drop_last=True,
         collate_fn=dit_collate_fn,
+        persistent_workers=True,
+        prefetch_factor=4,
     )
 
     # Mixed precision
     use_amp = train_cfg["mixed_precision"] == "bf16"
-    scaler = torch.amp.GradScaler(enabled=use_amp)
     amp_dtype = torch.bfloat16 if use_amp else torch.float32
 
     # Training loop setup
@@ -132,9 +133,11 @@ def train_dit(config_path, cache_dir, output_dir, vae_checkpoint=None, resume_fr
 
     print(f"Starting training from step {global_step} to {max_steps}")
     print(f"Dataset: {len(dataset)} samples")
-    print(f"Micro batch size: {train_cfg['micro_batch_size']}, "
-          f"Gradient accumulation: {grad_accum}, "
-          f"Effective batch size: {train_cfg['micro_batch_size'] * grad_accum}")
+    print(
+        f"Micro batch size: {train_cfg['micro_batch_size']}, "
+        f"Gradient accumulation: {grad_accum}, "
+        f"Effective batch size: {train_cfg['micro_batch_size'] * grad_accum}"
+    )
     print(f"Device: {device}")
     print(f"Mixed precision: {train_cfg['mixed_precision']}")
 
@@ -148,9 +151,10 @@ def train_dit(config_path, cache_dir, output_dir, vae_checkpoint=None, resume_fr
                 break
 
             # Move to device
-            z1 = batch["z1"].to(device)              # (B, 64, T)
+            z1 = batch["z1"].to(device)  # (B, 64, T)
             whisper_h = batch["whisper_h"].to(device)  # (B, T_w, 512)
             speaker_emb = batch["speaker_emb"].to(device)  # (B, 192)
+            z1_mask = batch["z1_mask"].to(device)  # (B, T)
 
             # Update learning rate (linear warmup + constant)
             lr = get_lr(global_step, warmup_steps, base_lr)
@@ -159,20 +163,18 @@ def train_dit(config_path, cache_dir, output_dir, vae_checkpoint=None, resume_fr
 
             # Forward pass with CFM loss
             with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
-                loss, loss_dict = model.compute_loss(z1, whisper_h, speaker_emb)
+                loss, loss_dict = model.compute_loss(z1, whisper_h, speaker_emb, z1_mask=z1_mask)
                 loss = loss / grad_accum
 
             # Backward pass
-            scaler.scale(loss).backward()
+            loss.backward()
 
             # Optimizer step at accumulation boundary
             if (global_step + 1) % grad_accum == 0:
                 # Gradient clipping
-                scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
 
-                scaler.step(optimizer)
-                scaler.update()
+                optimizer.step()
                 optimizer.zero_grad()
                 ema.update()
 
@@ -184,11 +186,7 @@ def train_dit(config_path, cache_dir, output_dir, vae_checkpoint=None, resume_fr
                     "train/learning_rate": lr,
                     "train/global_step": global_step,
                 }
-                print(
-                    f"Step {global_step}/{max_steps} | "
-                    f"CFM Loss: {cfm_loss:.6f} | "
-                    f"LR: {lr:.2e}"
-                )
+                print(f"Step {global_step}/{max_steps} | CFM Loss: {cfm_loss:.6f} | LR: {lr:.2e}")
                 if wandb.run:
                     wandb.log(log_dict, step=global_step)
 

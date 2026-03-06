@@ -6,7 +6,6 @@ import torch
 from floww2n.models.dit import DiffusionTransformer
 from floww2n.models.floww2n import FlowW2NModel
 
-
 # Small model config for fast testing
 TEST_DIT_CONFIG = {
     "io_channels": 64,
@@ -147,7 +146,7 @@ class TestFlowW2NModel:
 
         # Check that gradients exist for key parameters
         has_grad = False
-        for name, param in model.named_parameters():
+        for _name, param in model.named_parameters():
             if param.grad is not None and param.grad.abs().sum() > 0:
                 has_grad = True
                 break

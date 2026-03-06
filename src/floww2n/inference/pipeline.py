@@ -4,13 +4,11 @@ import json
 
 import numpy as np
 import torch
-import torch.nn as nn
 
-from ..models.vae import AudioAutoencoder
-from ..models.floww2n import FlowW2NModel
 from ..models.content_encoder import ContentEncoder
+from ..models.floww2n import FlowW2NModel
 from ..models.speaker_encoder import SpeakerEncoder
-from .sampler import euler_solve
+from ..models.vae import AudioAutoencoder
 
 
 class FlowW2NPipeline:
@@ -30,8 +28,16 @@ class FlowW2NPipeline:
         audio_out = pipeline(whisper_audio, sample_rate=16000)
     """
 
-    def __init__(self, vae, floww2n_model, content_encoder, speaker_encoder,
-                 device="cpu", num_steps=10, compression_ratio=1024):
+    def __init__(
+        self,
+        vae,
+        floww2n_model,
+        content_encoder,
+        speaker_encoder,
+        device="cpu",
+        num_steps=10,
+        compression_ratio=1024,
+    ):
         """
         Args:
             vae: AudioAutoencoder instance
@@ -57,10 +63,15 @@ class FlowW2NPipeline:
         # SpeakerEncoder uses internal device management via speechbrain
 
     @classmethod
-    def from_pretrained(cls, vae_checkpoint, dit_checkpoint,
-                        vae_config="configs/vae.json",
-                        dit_config="configs/dit.json",
-                        device="cuda", num_steps=10):
+    def from_pretrained(
+        cls,
+        vae_checkpoint,
+        dit_checkpoint,
+        vae_config="configs/vae.json",
+        dit_config="configs/dit.json",
+        device="cuda",
+        num_steps=10,
+    ):
         """Load pipeline from checkpoints and configs.
 
         Loads:
@@ -81,7 +92,7 @@ class FlowW2NPipeline:
             FlowW2NPipeline instance with loaded models
         """
         # Load VAE config and model
-        with open(vae_config, "r") as f:
+        with open(vae_config) as f:
             vae_cfg = json.load(f)
         vae_model_cfg = vae_cfg["model"]
 
@@ -101,7 +112,7 @@ class FlowW2NPipeline:
         compression_ratio = vae_model_cfg.get("compression_ratio", 1024)
 
         # Load DiT config and FlowW2NModel
-        with open(dit_config, "r") as f:
+        with open(dit_config) as f:
             dit_cfg = json.load(f)
         dit_model_cfg = dit_cfg["model"]
 
@@ -137,8 +148,7 @@ class FlowW2NPipeline:
         )
 
     @torch.no_grad()
-    def __call__(self, audio, sample_rate=16000, num_steps=None, seed=None,
-                 speaker_audio=None):
+    def __call__(self, audio, sample_rate=16000, num_steps=None, seed=None, speaker_audio=None):
         """Run whisper-to-normal conversion.
 
         Args:
@@ -170,9 +180,8 @@ class FlowW2NPipeline:
         # 2. Resample if not 16kHz
         if sample_rate != 16000:
             import torchaudio
-            resampler = torchaudio.transforms.Resample(
-                orig_freq=sample_rate, new_freq=16000
-            )
+
+            resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)
             audio_tensor = resampler(audio_tensor)
             sample_rate = 16000
 
@@ -213,14 +222,15 @@ class FlowW2NPipeline:
 
         batch_size = audio_tensor.shape[0]
         z0 = torch.randn(
-            batch_size, 64, latent_length,
-            device=self.device, generator=generator,
+            batch_size,
+            64,
+            latent_length,
+            device=self.device,
+            generator=generator,
         )
 
         # 7. Euler integration via FlowW2NModel.sample()
-        z1 = self.floww2n_model.sample(
-            z0, whisper_h, speaker_emb, num_steps=steps
-        )
+        z1 = self.floww2n_model.sample(z0, whisper_h, speaker_emb, num_steps=steps)
 
         # 8. Decode via VAE decoder -> (B, 1, T')
         audio_out = self.vae.decode(z1)  # (B, 1, T')

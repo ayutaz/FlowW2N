@@ -3,15 +3,21 @@
 
 import argparse
 import json
+from pathlib import Path
+
 import torch
 import torchaudio
-from pathlib import Path
 from tqdm import tqdm
 
 
-def cache_features(data_dir, output_dir, vae_checkpoint=None,
-                   config_path="configs/vae.json", sample_rate=16000,
-                   device="cuda"):
+def cache_features(
+    data_dir,
+    output_dir,
+    vae_checkpoint=None,
+    config_path="configs/vae.json",
+    sample_rate=16000,
+    device="cuda",
+):
     """Pre-compute and cache features for all audio files.
 
     For each audio file, saves:
@@ -102,15 +108,17 @@ def cache_features(data_dir, output_dir, vae_checkpoint=None,
             torch.save(z1, out_path / "vae_z1" / f"{stem}.pt")
             vae_z1_path = f"vae_z1/{stem}.pt"
 
-        manifest.append({
-            "audio_path": str(audio_path),
-            "stem": stem,
-            "whisper_h_path": f"whisper_h/{stem}.pt",
-            "speaker_path": f"speaker/{stem}.pt",
-            "vae_z1_path": vae_z1_path,
-            "audio_length_samples": len(audio),
-            "valid_whisper_frames": valid_frames,
-        })
+        manifest.append(
+            {
+                "audio_path": str(audio_path),
+                "stem": stem,
+                "whisper_h_path": f"whisper_h/{stem}.pt",
+                "speaker_path": f"speaker/{stem}.pt",
+                "vae_z1_path": vae_z1_path,
+                "audio_length_samples": len(audio),
+                "valid_whisper_frames": valid_frames,
+            }
+        )
 
     # Save manifest
     with open(out_path / "manifest.json", "w") as f:
@@ -121,17 +129,15 @@ def cache_features(data_dir, output_dir, vae_checkpoint=None,
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Pre-compute and cache features for DiT training"
+    parser = argparse.ArgumentParser(description="Pre-compute and cache features for DiT training")
+    parser.add_argument("--data-dir", type=str, required=True, help="Directory with audio files")
+    parser.add_argument(
+        "--output-dir", type=str, required=True, help="Directory to save cached features"
     )
-    parser.add_argument("--data-dir", type=str, required=True,
-                        help="Directory with audio files")
-    parser.add_argument("--output-dir", type=str, required=True,
-                        help="Directory to save cached features")
-    parser.add_argument("--vae-checkpoint", type=str, default=None,
-                        help="Path to trained VAE checkpoint (optional)")
-    parser.add_argument("--config", type=str, default="configs/vae.json",
-                        help="Path to VAE config")
+    parser.add_argument(
+        "--vae-checkpoint", type=str, default=None, help="Path to trained VAE checkpoint (optional)"
+    )
+    parser.add_argument("--config", type=str, default="configs/vae.json", help="Path to VAE config")
     parser.add_argument("--sample-rate", type=int, default=16000)
     parser.add_argument("--device", type=str, default="cuda")
     args = parser.parse_args()

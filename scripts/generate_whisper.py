@@ -2,9 +2,9 @@
 """Script: Generate synthetic whisper from normal speech using 4 methods."""
 
 import argparse
-import numpy as np
-import soundfile as sf
 from pathlib import Path
+
+import soundfile as sf
 from tqdm import tqdm
 
 from floww2n.data.whisper_synthesis import WhisperSynthesizer
@@ -27,8 +27,9 @@ def generate_whisper(data_dir, output_dir, sample_rate=16000, methods=None):
     for audio_path in tqdm(audio_files, desc="Generating whisper"):
         audio, sr = sf.read(audio_path, dtype="float32")
         if sr != sample_rate:
-            import torchaudio
             import torch
+            import torchaudio
+
             audio_t = torch.from_numpy(audio).float()
             audio_t = torchaudio.transforms.Resample(sr, sample_rate)(audio_t)
             audio = audio_t.numpy()
@@ -44,9 +45,7 @@ def generate_whisper(data_dir, output_dir, sample_rate=16000, methods=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Generate synthetic whisper from normal speech"
-    )
+    parser = argparse.ArgumentParser(description="Generate synthetic whisper from normal speech")
     parser.add_argument("--data-dir", type=str, required=True)
     parser.add_argument("--output-dir", type=str, required=True)
     parser.add_argument("--sample-rate", type=int, default=16000)

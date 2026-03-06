@@ -5,6 +5,7 @@ import torch.nn as nn
 
 # Patch torchaudio for speechbrain compatibility (torchaudio >= 2.10 removed list_audio_backends)
 import torchaudio
+
 if not hasattr(torchaudio, "list_audio_backends"):
     torchaudio.list_audio_backends = lambda: ["default"]
 
@@ -18,9 +19,12 @@ class SpeakerEncoder(nn.Module):
     All parameters are frozen.
     """
 
-    def __init__(self, model_name="speechbrain/spkrec-ecapa-voxceleb",
-                 save_dir="pretrained_models/spkrec-ecapa-voxceleb",
-                 device="cpu"):
+    def __init__(
+        self,
+        model_name="speechbrain/spkrec-ecapa-voxceleb",
+        save_dir="pretrained_models/spkrec-ecapa-voxceleb",
+        device="cpu",
+    ):
         super().__init__()
         self.output_dim = 192
         self.device = device
