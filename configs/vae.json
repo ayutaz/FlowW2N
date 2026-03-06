@@ -1,0 +1,34 @@
+{
+  "model": {
+    "sample_rate": 16000,
+    "io_channels": 1,
+    "latent_dim": 64,
+    "encoder_latent_dim": 128,
+    "channels": 128,
+    "c_mults": [1, 2, 4, 8],
+    "strides": [4, 4, 8, 8],
+    "use_snake": true,
+    "compression_ratio": 1024,
+    "frame_rate_hz": 15.625
+  },
+  "training": {
+    "batch_size": 256,
+    "effective_batch_size": 256,
+    "micro_batch_size": 16,
+    "gradient_accumulation_steps": 16,
+    "max_steps": 80000,
+    "learning_rate": 1.5e-4,
+    "optimizer": "AdamW",
+    "weight_decay": 0.01,
+    "ema_decay": 0.9999,
+    "mixed_precision": "bf16",
+    "segment_length": 65536,
+    "num_workers": 8
+  },
+  "losses": {
+    "multi_resolution_stft_weight": 1.0,
+    "adversarial_weight": 0.1,
+    "feature_matching_weight": 5.0,
+    "kl_weight": 1e-4
+  }
+}

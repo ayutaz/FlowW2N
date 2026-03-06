@@ -1,0 +1,56 @@
+{
+  "dataset": {
+    "name": "nvidia/hifitts-2",
+    "source_sample_rate": 24000,
+    "target_sample_rate": 16000,
+    "mono": true,
+    "normalize": true
+  },
+  "synthetic_whisper": {
+    "methods": [
+      "lpc_devoicing",
+      "glottal_removal",
+      "formant_bandwidth_mod",
+      "praat_whisperize"
+    ],
+    "sampling": "uniform",
+    "probability_per_method": 0.25
+  },
+  "vae_training": {
+    "segment_length": 65536,
+    "random_crop": true
+  },
+  "dit_training": {
+    "max_audio_length": 160000,
+    "variable_length": true,
+    "padding_strategy": "batch_max"
+  },
+  "feature_cache": {
+    "whisper_h": {
+      "description": "Whisper Base layer 5 output",
+      "shape_per_frame": [512],
+      "frame_rate_hz": 50
+    },
+    "speaker_embedding": {
+      "description": "ECAPA-TDNN speaker embedding",
+      "shape": [192]
+    },
+    "vae_latent": {
+      "description": "VAE encoder output z1",
+      "shape_per_frame": [64],
+      "frame_rate_hz": 15.625
+    }
+  },
+  "evaluation_datasets": {
+    "wtimit": {
+      "speakers": 50,
+      "utterances": 1404,
+      "duration_hours": 2.0
+    },
+    "chains": {
+      "speakers": 36,
+      "whisper_utterances": 1332,
+      "duration_hours": 2.45
+    }
+  }
+}
