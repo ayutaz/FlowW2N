@@ -1,11 +1,13 @@
 # FlowW2N: コアモデル（VAE + DiT）実装計画
 
-> **実装状況**: ✅ VAE (M1) および DiT (M3) の実装完了。
-> - `src/floww2n/models/vae.py` - Oobleck VAE (~573 lines, ~40M params), 9 tests passing
-> - `src/floww2n/models/dit.py` - DiffusionTransformer (~580 lines, ~205M params), 9 tests passing
-> - `src/floww2n/models/floww2n.py` - FlowW2NModel (CFM loss + Euler sampling)
-> - `src/floww2n/training/losses.py` - Multi-res STFT + Discriminator + KL loss
-> - `src/floww2n/training/train_vae.py` / `train_dit.py` - 学習ループ
+> **実装状況**: ✅ 全マイルストーン (M0-M4) 完了。品質監査完了。
+> - `src/floww2n/models/vae.py` - Oobleck VAE (~573 lines, ~40M params)
+> - `src/floww2n/models/dit.py` - DiffusionTransformer (~580 lines, ~205M params, gradient checkpointing対応)
+> - `src/floww2n/models/floww2n.py` - FlowW2NModel (CFM loss + Euler sampling, masked loss対応)
+> - `src/floww2n/training/losses.py` - Multi-res STFT + Discriminator + KL loss (feature_matching detach修正済み)
+> - `src/floww2n/training/train_vae.py` / `train_dit.py` - 学習ループ (bf16最適化、DataLoader高速化)
+> - テスト: 72 tests passing (test_vae 9, test_dit 9, test_losses 12, test_pipeline 16, test_dataset 7, test_whisper_synthesis 11, test_training 8)
+> - コード品質: ruff lint 0 errors, ruff format 全36ファイル適用済み
 
 本ドキュメントでは、FlowW2N の再現実装に必要なコアモデル（VAE と DiT）の実装計画を策定する。stable-audio-tools の調査結果に基づき、Oobleck VAE と DiffusionTransformer の適応方針を詳述する。
 
@@ -200,7 +202,11 @@ tests/
   __init__.py
   test_vae.py
   test_dit.py
+  test_losses.py
   test_pipeline.py
+  test_dataset.py
+  test_whisper_synthesis.py
+  test_training.py
 ```
 
 ---

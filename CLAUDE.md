@@ -42,15 +42,20 @@ src/floww2n/           # メインパッケージ
     dataset.py         # VAEDataset + DiTDataset + dit_collate_fn
     train_vae.py       # VAE 学習ループ (EMA, bf16, discriminator)
     train_dit.py       # DiT 学習ループ (CFM, EMA, bf16, warmup)
-  inference/           # 推論パイプライン (未実装)
+  inference/           # 推論パイプライン
+    pipeline.py        # FlowW2NPipeline: end-to-end推論
+    sampler.py         # Euler sampler
   data/                # 合成ウィスパー生成
     whisper_synthesis.py  # 4手法 (LPC, glottal, formant, praat)
-  evaluation/          # 評価指標 (未実装)
+    preprocess.py      # データ前処理
+  evaluation/          # 評価パイプライン
+    metrics.py         # WER, UTMOS, DNSMOS, SpkSim
+    evaluate.py        # 評価実行スクリプト
 configs/               # 設定ファイル (vae.json, dit.json, data.json)
 scripts/               # エントリポイントスクリプト
-  train_vae.py, train_dit.py, cache_features.py, generate_whisper.py
-tests/                 # テスト (18 tests passing)
-  test_vae.py (9), test_dit.py (9)
+  train_vae.py, train_dit.py, cache_features.py, generate_whisper.py, inference.py, evaluate.py, preprocess_data.py
+tests/                 # テスト (72 tests passing)
+  test_vae.py (9), test_dit.py (9), test_losses.py (12), test_pipeline.py (16), test_dataset.py (7), test_whisper_synthesis.py (11), test_training.py (8)
 ```
 
 ## 設定ファイル

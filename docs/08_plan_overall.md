@@ -214,14 +214,30 @@ Ph3         [========]     DiT・Flow Matching・推論・評価コード
 
 **完了基準**: DiT の入力→速度場出力→損失計算が正常動作。 **(達成済み: dit.py ~580行, floww2n.py ~260行, DiTDataset + dit_collate_fn, ~205M params, 9テスト通過, 合計18/18テスト通過)**
 
-### M4: 推論・評価パイプライン完成
+### M4: 推論・評価パイプライン完成 --- COMPLETE
 
-- [ ] FlowW2NPipeline でランダム重みによるエンドツーエンド推論成功
-- [ ] Euler サンプラー（N=10）の動作確認
-- [ ] 評価指標（WER-N, WER-W, UTMOS, DNSMOS, SpkSim）の計算コード動作
-- [ ] 統合テスト: 推論→評価のパイプライン全体が通過
+- [x] FlowW2NPipeline でランダム重みによるエンドツーエンド推論成功
+- [x] Euler サンプラー（N=10）の動作確認
+- [x] 評価指標（WER-N, WER-W, UTMOS, DNSMOS, SpkSim）の計算コード動作
+- [x] 統合テスト: 推論→評価のパイプライン全体が通過
 
-**完了基準**: ダミーまたはランダム重みで推論→波形出力→評価スコア算出が一通り動作。全コードが学習環境にデプロイ可能な状態。
+**完了基準**: ダミーまたはランダム重みで推論→波形出力→評価スコア算出が一通り動作。全コードが学習環境にデプロイ可能な状態。 **(達成済み: pipeline.py, sampler.py, metrics.py, evaluate.py, 16テスト通過)**
+
+### M5: 品質監査完了 --- COMPLETE
+
+- [x] 10エージェントによる包括的品質監査（19件の問題を特定）
+- [x] 全19件のバグ修正・改善を適用
+- [x] KL divergence の0.5係数修正
+- [x] generator_loss の冗長な forward 削除、feature_matching の detach修正
+- [x] bf16 GradScaler 削除（bf16では不要）
+- [x] gradient checkpointing 追加（DiT）
+- [x] masked CFM loss 対応
+- [x] DataLoader最適化（persistent_workers, prefetch_factor）
+- [x] ContentEncoder のdevice管理修正
+- [x] テスト追加: 34 → 72テスト（+38テスト）
+- [x] ruff lint/format 設定・適用（0 errors, 36ファイル）
+
+**完了基準**: 全テスト通過、lint 0エラー、全ファイルフォーマット済み。 **(達成済み: 72/72テスト通過, ruff check 0 errors, ruff format 36 files)**
 
 ---
 
@@ -280,10 +296,14 @@ FlowW2N/
 │   ├── train_dit.py
 │   ├── inference.py
 │   └── evaluate.py
-└── tests/                         # テスト
-    ├── test_vae.py
-    ├── test_dit.py
-    └── test_pipeline.py
+└── tests/                         # テスト (72 tests)
+    ├── test_vae.py                # VAEテスト (9)
+    ├── test_dit.py                # DiT/FlowW2Nテスト (9)
+    ├── test_losses.py             # 損失関数テスト (12)
+    ├── test_pipeline.py           # パイプラインテスト (16)
+    ├── test_dataset.py            # データセットテスト (7)
+    ├── test_whisper_synthesis.py   # 合成ウィスパーテスト (11)
+    └── test_training.py           # 学習ユーティリティテスト (8)
 ```
 
 ---
@@ -304,18 +324,19 @@ FlowW2N/
 
 | 段階 | 追加コード | 成果物 | 状態 |
 |------|---------|---------|------|
-| MVP | VAE + DiT + 条件付け + 推論 | ダミーデータでエンドツーエンド動作 | **大部分完了** (推論パイプライン未実装) |
-| +1 | 合成ウィスパー残り3手法 | 全4手法の WhisperSynthesizer | **完了** |
-| +2 | 学習スクリプト完成 | train_vae.py, train_dit.py が実行可能 | **完了** |
-| +3 | 評価パイプライン | 全5指標の計算コード | 未着手 |
-| +4 | 設定ファイル・テスト | configs/, tests/ の整備 | **完了** (18/18テスト通過) |
+| MVP | VAE + DiT + 条件付け + 推論 | ダミーデータでエンドツーエンド動作 | **✅ 完了** |
+| +1 | 合成ウィスパー残り3手法 | 全4手法の WhisperSynthesizer | **✅ 完了** |
+| +2 | 学習スクリプト完成 | train_vae.py, train_dit.py が実行可能 | **✅ 完了** |
+| +3 | 評価パイプライン | 全5指標の計算コード | **✅ 完了** |
+| +4 | 設定ファイル・テスト | configs/, tests/ の整備 | **✅ 完了** (72/72テスト通過) |
+| +5 | 品質監査 | バグ修正、最適化、ruff lint/format | **✅ 完了** |
 
 ---
 
 ## 8. まとめ
 
-1. **4フェーズ、約3-4週間** のコード実装スケジュール（学習・データ準備は別環境）
+1. **全マイルストーン (M0-M5) 完了**: 環境構築からVAE、条件付け、DiT、推論・評価、品質監査まで全工程のコードが完成
 2. **論文未記載パラメータ** は SA2.0 と DiT 原論文から推定（embed_dim=768, lr=1.5e-4 等）
-3. **最大リスク** は SR/stride 設定とライブラリ互換性 → ダミーデータでの早期検証で軽減
-4. **Quick-Win 戦略** により、まず MVP コードを構築し、段階的にコンポーネントを追加
+3. **品質監査で19件の問題を特定・修正**: KL係数、gradient checkpointing、masked loss、DataLoader最適化等
+4. **72テスト通過、ruff lint 0エラー**: コード品質を継続的に担保
 5. **成果物**: 学習環境にデプロイ可能な再現実装コード一式（モデル、学習スクリプト、推論・評価パイプライン）

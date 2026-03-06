@@ -333,25 +333,30 @@ z1 --> VAE Decoder D --> s_hat (通常音声の推定)
 
 ### A. 環境構築
 - [x] Python 環境のセットアップ
-- [ ] stable-audio-tools のインストールと動作確認
-- [ ] OpenAI Whisper のインストール
-- [ ] SpeechBrain のインストール
-- [ ] 合成ウィスパー生成ツール群のインストール（toWhisper, Praat 等）
+- [x] stable-audio-tools からの VAE/DiT アーキテクチャ移植
+- [x] OpenAI Whisper ラッパー (ContentEncoder) 実装
+- [x] SpeechBrain ECAPA-TDNN ラッパー (SpeakerEncoder) 実装
+- [x] 合成ウィスパー生成モジュール (4手法) 実装
+- [x] pyproject.toml に全依存定義、ruff lint/format 設定
 
 ### B. データ準備
 - [ ] HiFi-TTS-2 データセットのダウンロード
 - [ ] wTIMIT データセットの準備（評価用）
 - [ ] CHAINS データセットの準備（評価用）
-- [ ] 合成ウィスパーデータの生成（4手法、等確率サンプリング）
+- [x] 合成ウィスパー生成コード完成（4手法、等確率サンプリング）
+- [x] 特徴量キャッシュスクリプト (cache_features.py) 完成
+- [x] データ前処理スクリプト (preprocess_data.py) 完成
 
 ### C. モデル学習
-- [ ] VAE（Oobleck）の学習（80,000 ステップ、バッチサイズ 256、normal speech のみ）
-- [ ] VAE の復元品質の検証
-- [ ] DiT の学習（合成ウィスパー-通常音声ペア）
-- [ ] 学習曲線の監視と検証
+- [x] VAE（Oobleck）学習コード完成 (train_vae.py, bf16, EMA, discriminator)
+- [ ] VAE の学習実行と復元品質の検証
+- [x] DiT 学習コード完成 (train_dit.py, CFM loss, masked loss, EMA, warmup)
+- [ ] DiT の学習実行と品質確認
 
 ### D. 推論と評価
-- [ ] 推論パイプラインの構築（Euler 積分、N=10 ステップ）
-- [ ] wTIMIT での評価（WER, UTMOS, DNSMOS, SpkSim）
-- [ ] CHAINS での評価（同上）
+- [x] 推論パイプライン構築 (FlowW2NPipeline, Euler 積分 N=10)
+- [x] 評価パイプライン構築 (WER-N, WER-W, UTMOS, DNSMOS, SpkSim)
+- [x] 統合テスト通過 (72テスト)
+- [ ] wTIMIT での評価実行
+- [ ] CHAINS での評価実行
 - [ ] 結果の論文値との比較

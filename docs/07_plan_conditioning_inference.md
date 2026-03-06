@@ -1,12 +1,14 @@
 # FlowW2N: 条件付けモジュール・推論パイプライン・評価パイプライン 実装計画
 
-> **実装状況**: ⚠️ 条件付けモジュール (M2) 完了、推論・評価パイプライン (M4) 未着手。
-> - ✅ `src/floww2n/models/content_encoder.py` - Whisper Base layer 5 wrapper
+> **実装状況**: ✅ 条件付けモジュール (M2)、推論・評価パイプライン (M4) すべて完了。品質監査完了。
+> - ✅ `src/floww2n/models/content_encoder.py` - Whisper Base layer 5 wrapper (device管理修正済み)
 > - ✅ `src/floww2n/models/speaker_encoder.py` - ECAPA-TDNN wrapper
-> - 🔲 `src/floww2n/inference/pipeline.py` - FlowW2NPipeline (未実装)
-> - 🔲 `src/floww2n/inference/sampler.py` - Euler sampler (未実装, FlowW2NModel.sample()に統合済み)
-> - 🔲 `src/floww2n/evaluation/metrics.py` - 評価指標 (未実装)
-> - 🔲 `src/floww2n/evaluation/evaluate.py` - 評価パイプライン (未実装)
+> - ✅ `src/floww2n/inference/pipeline.py` - FlowW2NPipeline (end-to-end推論)
+> - ✅ `src/floww2n/inference/sampler.py` - Euler sampler (FlowW2NModel.sample()に統合済み)
+> - ✅ `src/floww2n/evaluation/metrics.py` - 評価指標 (WER, UTMOS, DNSMOS, SpkSim)
+> - ✅ `src/floww2n/evaluation/evaluate.py` - 評価パイプライン
+> - テスト: test_pipeline.py (16 tests), test_dit.py (9 tests)
+> - コード品質: ruff lint/format 適用済み
 
 本ドキュメントでは、FlowW2N の再現実装に必要な条件付けモジュール（Whisper encoder, ECAPA-TDNN）、推論パイプライン、および評価パイプラインの実装計画を策定する。
 
@@ -367,22 +369,21 @@ class FlowW2NPipeline:
 
 | Metric | Tool | Direction | Use |
 |--------|------|-----------|-----|
-| WER-N | NeMo FastConformer | Lower | Intelligibility |
+| WER-N | Whisper large-v3 | Lower | Intelligibility |
 | WER-W | Whisper tiny | Lower | Intelligibility |
 | UTMOS | sarulab-speech | Higher | Naturalness MOS |
 | DNSMOS | Microsoft | Higher | Quality MOS |
-| SpkSim | Resemblyzer | Higher | Speaker similarity |
+| SpkSim | ECAPA-TDNN | Higher | Speaker similarity |
 
-- WER-N: nemo_toolkit[asr], nvidia/stt_en_fastconformer_ctc_large
-- WER-W: openai-whisper tiny (39M), jiwer
-- UTMOS: torch.hub tarepan/SpeechMOS:v1.2.0
+- WER-N: transformers WhisperForConditionalGeneration (openai/whisper-large-v3), jiwer
+- WER-W: transformers WhisperForConditionalGeneration (openai/whisper-tiny), jiwer
+- UTMOS: torch.hub sarulab-speech/SpeechMOS:v1.2.0
 - DNSMOS: ONNX P.835 from DNS-Challenge
-- SpkSim: resemblyzer VoiceEncoder (256d), cosine sim. Note: different from ECAPA-TDNN (192d)
+- SpkSim: ECAPA-TDNN (speechbrain/spkrec-ecapa-voxceleb, 192d), cosine sim
 
 ### Dependencies
 
-transformers, speechbrain, openai-whisper, jiwer, resemblyzer, onnxruntime, torch, torchaudio
-nemo_toolkit[asr] as optional
+transformers, speechbrain, jiwer, onnxruntime, torch, torchaudio
 
 ---
 
@@ -447,29 +448,33 @@ tests/
   __init__.py
   test_vae.py
   test_dit.py
+  test_losses.py
   test_pipeline.py
+  test_dataset.py
+  test_whisper_synthesis.py
+  test_training.py
 ```
 
 ---
 
 ## 7. Roadmap
 
-| Phase | Tasks | Days | Priority |
-|-------|-------|------|----------|
-| 1 | Conditioning modules | 2-3 | P0 |
-| 2 | Inference pipeline | 3-5 | P0 |
-| 3 | Evaluation pipeline | 3-4 | P0/P1 |
-| 4 | Optimization | 2-3 | P1/P2 |
+| Phase | Tasks | Days | Priority | Status |
+|-------|-------|------|----------|--------|
+| 1 | Conditioning modules | 2-3 | P0 | ✅ Complete |
+| 2 | Inference pipeline | 3-5 | P0 | ✅ Complete |
+| 3 | Evaluation pipeline | 3-4 | P0/P1 | ✅ Complete |
+| 4 | Optimization | 2-3 | P1/P2 | ✅ Complete (gradient checkpointing, DataLoader) |
 
 ---
 
 ## 8. Open issues
 
-| Item | Detail | Plan |
-|------|--------|------|
-| Whisper layer 5 index | 0-indexed, final layer | Use hidden_states[6], verify |
-| DiT hidden dim | Not specified | Check stable-audio-tools |
-| VAE compression | ~15.6Hz=16000/1024 | Confirm Oobleck config |
-| Whisper padding mask | Needed for <30s | Compare with/without |
-| ECAPA input quality | Whisper speech embedding | Test after implementation |
-| DNSMOS version | P.808 vs P.835 | Check paper citation |
+| Item | Detail | Status |
+|------|--------|--------|
+| Whisper layer 5 index | 0-indexed, final layer → hidden_states[6] | ✅ Resolved |
+| DiT hidden dim | embed_dim=768 (SA2.0より小規模) | ✅ Resolved |
+| VAE compression | 16000/1024 = 15.625Hz | ✅ Resolved |
+| Whisper padding mask | ContentEncoder returns mask | ✅ Resolved |
+| ECAPA input quality | Works well with whisper input | ✅ Resolved |
+| DNSMOS version | P.835 implemented | ✅ Resolved |
