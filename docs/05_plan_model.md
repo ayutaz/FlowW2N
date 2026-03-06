@@ -149,13 +149,52 @@ z~N(0,I), dt=0.1, z+=dt*v_theta(z,t,c) x10回, audio=vae.decode(z)
 
 ## 4. ディレクトリ構成
 
-configs/ (vae/dit/data JSON), src/floww2n/ (models/ training/ inference/ data/ evaluation/), scripts/, tests/
-
-models/: vae.py, dit.py, content_encoder.py, speaker_encoder.py, floww2n.py
-training/: train_vae.py, train_dit.py, losses.py, dataset.py
-inference/: convert.py
-data/: whisper_synthesis.py, preprocess.py
-evaluation/: metrics.py, evaluate.py
+```
+src/floww2n/
+  __init__.py
+  models/
+    __init__.py
+    vae.py
+    dit.py
+    content_encoder.py
+    speaker_encoder.py
+    floww2n.py
+  training/
+    __init__.py
+    train_vae.py
+    train_dit.py
+    losses.py
+    dataset.py
+  inference/
+    __init__.py
+    pipeline.py
+    sampler.py
+  data/
+    __init__.py
+    preprocess.py
+    whisper_synthesis.py
+  evaluation/
+    __init__.py
+    metrics.py
+    evaluate.py
+configs/
+  vae.json
+  dit.json
+  data.json
+scripts/
+  preprocess_data.py
+  generate_whisper.py
+  cache_features.py
+  train_vae.py
+  train_dit.py
+  inference.py
+  evaluate.py
+tests/
+  __init__.py
+  test_vae.py
+  test_dit.py
+  test_pipeline.py
+```
 
 ---
 

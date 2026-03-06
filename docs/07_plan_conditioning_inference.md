@@ -395,12 +395,52 @@ nemo_toolkit[asr] as optional
 
 ## 6. File structure
 
-models/ (vae, dit, dit_block, conditioning)
-inference/ (pipeline, sampler, utils)
-evaluation/ (evaluator, wer, mos, speaker_sim)
-training/ (train_vae, train_dit, dataset)
-configs/ (model, train, inference yaml)
-scripts/ (inference, evaluate)
+```
+src/floww2n/
+  __init__.py
+  models/
+    __init__.py
+    vae.py
+    dit.py
+    content_encoder.py
+    speaker_encoder.py
+    floww2n.py
+  training/
+    __init__.py
+    train_vae.py
+    train_dit.py
+    losses.py
+    dataset.py
+  inference/
+    __init__.py
+    pipeline.py
+    sampler.py
+  data/
+    __init__.py
+    preprocess.py
+    whisper_synthesis.py
+  evaluation/
+    __init__.py
+    metrics.py
+    evaluate.py
+configs/
+  vae.json
+  dit.json
+  data.json
+scripts/
+  preprocess_data.py
+  generate_whisper.py
+  cache_features.py
+  train_vae.py
+  train_dit.py
+  inference.py
+  evaluate.py
+tests/
+  __init__.py
+  test_vae.py
+  test_dit.py
+  test_pipeline.py
+```
 
 ---
 

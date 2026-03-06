@@ -180,9 +180,9 @@ Ph3         [========]     DiT・Flow Matching・推論・評価コード
 
 ### M0: プロジェクト基盤完了
 
-- [ ] pyproject.toml に全依存定義、`uv sync` 成功
-- [ ] ディレクトリ構造・パッケージ構造の構築完了
-- [ ] configs/ に VAE/DiT/data の設定ファイル作成
+- [x] pyproject.toml に全依存定義、`uv sync` 成功
+- [x] ディレクトリ構造・パッケージ構造の構築完了
+- [x] configs/ に VAE/DiT/data の設定ファイル作成
 
 **完了基準**: `uv run python -c "import floww2n"` が成功。
 

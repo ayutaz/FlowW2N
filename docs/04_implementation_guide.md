@@ -332,7 +332,7 @@ z1 --> VAE Decoder D --> s_hat (通常音声の推定)
 再現実装を進める際の確認項目を以下にまとめる。
 
 ### A. 環境構築
-- [ ] Python 環境のセットアップ
+- [x] Python 環境のセットアップ
 - [ ] stable-audio-tools のインストールと動作確認
 - [ ] OpenAI Whisper のインストール
 - [ ] SpeechBrain のインストール
