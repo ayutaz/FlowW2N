@@ -89,7 +89,7 @@ class SharedDiscriminatorConvNet(nn.Module):
 
             # Conv with weight normalization
             conv = nn.Conv1d(in_ch, out_ch, kernel_size=kernel_size, stride=stride, padding=padding)
-            conv = nn.utils.weight_norm(conv)
+            conv = nn.utils.parametrizations.weight_norm(conv)
             layers.append(conv)
 
             # Activation
@@ -100,7 +100,7 @@ class SharedDiscriminatorConvNet(nn.Module):
 
         # Final conv to scalar output
         final_conv = nn.Conv1d(channels[-1], 1, kernel_size=1)
-        final_conv = nn.utils.weight_norm(final_conv)
+        final_conv = nn.utils.parametrizations.weight_norm(final_conv)
         layers.append(final_conv)
 
         self.layers = nn.Sequential(*layers)

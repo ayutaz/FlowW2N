@@ -59,12 +59,12 @@ class ContentEncoder(nn.Module):
             valid_frames = min(int(audio_len_sec * 50), 1500)
             valid_frames_list.append(valid_frames)
 
-        # Extract features
+        # Extract features (pad to 30s = 3000 mel frames as Whisper expects)
         inputs = self.feature_extractor(
             audio_np,
             sampling_rate=sample_rate,
             return_tensors="pt",
-            padding=True,
+            padding="max_length",
         )
         input_features = inputs.input_features.to(next(self.model.parameters()).device)
 

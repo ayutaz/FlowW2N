@@ -76,16 +76,18 @@ def train_vae(config_path, data_dir, output_dir, resume_from=None):
         segment_length=train_cfg["segment_length"],
         sample_rate=model_cfg["sample_rate"],
     )
-    dataloader = DataLoader(
-        dataset,
+    num_workers = train_cfg["num_workers"]
+    loader_kwargs = dict(
         batch_size=train_cfg["micro_batch_size"],
         shuffle=True,
-        num_workers=train_cfg["num_workers"],
+        num_workers=num_workers,
         pin_memory=True,
         drop_last=True,
-        persistent_workers=True,
-        prefetch_factor=4,
     )
+    if num_workers > 0:
+        loader_kwargs["persistent_workers"] = True
+        loader_kwargs["prefetch_factor"] = 4
+    dataloader = DataLoader(dataset, **loader_kwargs)
 
     # Mixed precision
     use_amp = train_cfg["mixed_precision"] == "bf16"
