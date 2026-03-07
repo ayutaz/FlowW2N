@@ -92,6 +92,12 @@ def main():
         default=None,
         help="Random seed for reproducibility (default: None)",
     )
+    parser.add_argument(
+        "--language",
+        type=str,
+        default=None,
+        help="Language code for multilingual models (e.g. en, ja)",
+    )
     args = parser.parse_args()
 
     # Validate device
@@ -139,6 +145,7 @@ def main():
             sample_rate=sr,
             num_steps=args.num_steps,
             seed=args.seed,
+            language=args.language,
         )
 
         # audio_out is (batch, samples); take first element

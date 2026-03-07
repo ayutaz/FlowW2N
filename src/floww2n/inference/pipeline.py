@@ -37,6 +37,7 @@ class FlowW2NPipeline:
         device="cpu",
         num_steps=10,
         compression_ratio=1024,
+        language_map=None,
     ):
         """
         Args:
@@ -47,6 +48,8 @@ class FlowW2NPipeline:
             device: Device string
             num_steps: Default number of Euler steps
             compression_ratio: VAE compression ratio (default: 1024)
+            language_map: Optional mapping from language code to index,
+                e.g. {"en": 0, "ja": 1}.  Required for multilingual models.
         """
         self.vae = vae
         self.floww2n_model = floww2n_model
@@ -55,6 +58,7 @@ class FlowW2NPipeline:
         self.device = device
         self.num_steps = num_steps
         self.compression_ratio = compression_ratio
+        self.language_map = language_map
 
         # Move models to device and set to eval mode
         self.vae.to(device).eval()
@@ -137,6 +141,12 @@ class FlowW2NPipeline:
             device=device,
         )
 
+        # Build language_map from config if multilingual
+        languages = dit_model_cfg.get("languages", None)
+        language_map = None
+        if languages and len(languages) > 1:
+            language_map = {lang: idx for idx, lang in enumerate(languages)}
+
         return cls(
             vae=vae,
             floww2n_model=floww2n_model,
@@ -145,10 +155,13 @@ class FlowW2NPipeline:
             device=device,
             num_steps=num_steps,
             compression_ratio=compression_ratio,
+            language_map=language_map,
         )
 
     @torch.no_grad()
-    def __call__(self, audio, sample_rate=16000, num_steps=None, seed=None, speaker_audio=None):
+    def __call__(
+        self, audio, sample_rate=16000, num_steps=None, seed=None, speaker_audio=None, language=None
+    ):
         """Run whisper-to-normal conversion.
 
         Args:
@@ -160,6 +173,7 @@ class FlowW2NPipeline:
             seed: Random seed for reproducibility (default: None)
             speaker_audio: Optional separate audio for speaker embedding.
                           If None, uses the whisper audio itself for speaker identity.
+            language: Optional language code (e.g. "en", "ja") for multilingual models.
 
         Returns:
             audio_out: Converted normal speech (batch, samples) as torch.Tensor
@@ -229,13 +243,25 @@ class FlowW2NPipeline:
             generator=generator,
         )
 
-        # 7. Euler integration via FlowW2NModel.sample()
-        z1 = self.floww2n_model.sample(z0, whisper_h, speaker_emb, num_steps=steps)
+        # 7. Build language_id tensor if multilingual
+        language_id = None
+        if self.language_map is not None and language is not None:
+            lang_idx = self.language_map.get(language)
+            if lang_idx is None:
+                raise ValueError(
+                    f"Unknown language {language!r}. Available: {list(self.language_map.keys())}"
+                )
+            language_id = torch.full((batch_size,), lang_idx, device=self.device, dtype=torch.long)
 
-        # 8. Decode via VAE decoder -> (B, 1, T')
+        # 8. Euler integration via FlowW2NModel.sample()
+        z1 = self.floww2n_model.sample(
+            z0, whisper_h, speaker_emb, num_steps=steps, language_id=language_id
+        )
+
+        # 9. Decode via VAE decoder -> (B, 1, T')
         audio_out = self.vae.decode(z1)  # (B, 1, T')
 
-        # 9. Return (B, T') squeezed
+        # 10. Return (B, T') squeezed
         audio_out = audio_out.squeeze(1)  # (B, T')
 
         return audio_out

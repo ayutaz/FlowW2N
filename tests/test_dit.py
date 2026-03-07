@@ -151,3 +151,72 @@ class TestFlowW2NModel:
                 has_grad = True
                 break
         assert has_grad, "No gradients found in model parameters"
+
+
+# ---- Multilingual tests ----
+
+MULTILINGUAL_DIT_CONFIG = {
+    **TEST_DIT_CONFIG,
+    "num_languages": 2,
+    "languages": ["en", "ja"],
+}
+
+
+class TestFlowW2NMultilingual:
+    @pytest.fixture
+    def model(self):
+        return FlowW2NModel(
+            dit_config=MULTILINGUAL_DIT_CONFIG,
+            speaker_dim=SPEAKER_DIM,
+        )
+
+    def test_forward_with_language_id(self, model):
+        """Forward pass works with language_id provided."""
+        z1 = torch.randn(B, IO_CHANNELS, T_LATENT)
+        t = torch.rand(B)
+        whisper_h = torch.randn(B, T_WHISPER, 512)
+        speaker_emb = torch.randn(B, SPEAKER_DIM)
+        language_id = torch.tensor([0, 1])
+
+        v_pred = model(z1, t, whisper_h, speaker_emb, language_id=language_id)
+        assert v_pred.shape == (B, IO_CHANNELS, T_LATENT)
+
+    def test_compute_loss_with_language_id(self, model):
+        """compute_loss works with language_id."""
+        z1 = torch.randn(B, IO_CHANNELS, T_LATENT)
+        whisper_h = torch.randn(B, T_WHISPER, 512)
+        speaker_emb = torch.randn(B, SPEAKER_DIM)
+        language_id = torch.tensor([0, 1])
+
+        loss, loss_dict = model.compute_loss(z1, whisper_h, speaker_emb, language_id=language_id)
+        assert loss.dim() == 0
+        assert loss.item() > 0
+        assert "cfm_loss" in loss_dict
+
+    def test_sample_with_language_id(self, model):
+        """sample works with language_id."""
+        z0 = torch.randn(B, IO_CHANNELS, T_LATENT)
+        whisper_h = torch.randn(B, T_WHISPER, 512)
+        speaker_emb = torch.randn(B, SPEAKER_DIM)
+        language_id = torch.tensor([0, 1])
+
+        z1_pred = model.sample(z0, whisper_h, speaker_emb, num_steps=3, language_id=language_id)
+        assert z1_pred.shape == (B, IO_CHANNELS, T_LATENT)
+
+    def test_backward_compat_no_language_id(self, model):
+        """Multilingual model works without language_id (backward compat)."""
+        z1 = torch.randn(B, IO_CHANNELS, T_LATENT)
+        t = torch.rand(B)
+        whisper_h = torch.randn(B, T_WHISPER, 512)
+        speaker_emb = torch.randn(B, SPEAKER_DIM)
+
+        v_pred = model(z1, t, whisper_h, speaker_emb)
+        assert v_pred.shape == (B, IO_CHANNELS, T_LATENT)
+
+    def test_different_languages_different_embeddings(self, model):
+        """Different language_ids produce different language embeddings."""
+        assert model.language_emb is not None
+        emb_en = model.language_emb(torch.tensor([0]))
+        emb_ja = model.language_emb(torch.tensor([1]))
+        # Randomly initialized embeddings should differ
+        assert not torch.allclose(emb_en, emb_ja)

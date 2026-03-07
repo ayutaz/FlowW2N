@@ -69,7 +69,16 @@ class FlowW2NModel(nn.Module):
         # where it is combined with the timestep embedding via AdaLN.
         self.speaker_proj = nn.Linear(speaker_dim, self.embed_dim)
 
-    def forward(self, z1, t, whisper_h, speaker_emb):
+        # Language embedding (multilingual support)
+        # When num_languages > 1, a learned embedding is added to global_cond.
+        # When num_languages <= 1 or language_id is None, behaviour is unchanged.
+        self.num_languages = dit_config.get("num_languages", 1)
+        if self.num_languages > 1:
+            self.language_emb = nn.Embedding(self.num_languages, self.embed_dim)
+        else:
+            self.language_emb = None
+
+    def forward(self, z1, t, whisper_h, speaker_emb, language_id=None):
         """Predict velocity field v_theta(zt, t, c).
 
         Constructs zt from z0 ~ N(0,I) and z1 via linear interpolation,
@@ -90,6 +99,8 @@ class FlowW2NModel(nn.Module):
             t: Timestep (B,) in [0, 1]
             whisper_h: Whisper content features (B, T_w, 512)
             speaker_emb: Speaker embedding (B, 192)
+            language_id: Optional language index (B,) as LongTensor.
+                Used only when num_languages > 1.
 
         Returns:
             v_pred: Predicted velocity (B, 64, T)
@@ -97,20 +108,25 @@ class FlowW2NModel(nn.Module):
         # Project speaker embedding to DiT embed_dim
         spk_proj = self.speaker_proj(speaker_emb)  # (B, embed_dim)
 
+        # Build global condition: speaker + optional language
+        global_cond = spk_proj
+        if self.language_emb is not None and language_id is not None:
+            global_cond = global_cond + self.language_emb(language_id)
+
         # DiT forward: timestep embedding is handled inside DiT.
-        # global_cond (speaker projection) is added to timestep embedding
-        # inside the DiT and injected via AdaLN.
+        # global_cond (speaker projection + language) is added to timestep
+        # embedding inside the DiT and injected via AdaLN.
         # cross_attn_cond (whisper features) is injected via cross-attention.
         v_pred = self.dit(
             z1,
             t,
             cross_attn_cond=whisper_h,
-            global_cond=spk_proj,
+            global_cond=global_cond,
         )
 
         return v_pred
 
-    def compute_loss(self, z1, whisper_h, speaker_emb, z1_mask=None):
+    def compute_loss(self, z1, whisper_h, speaker_emb, z1_mask=None, language_id=None):
         """Compute CFM training loss.
 
         Args:
@@ -118,6 +134,7 @@ class FlowW2NModel(nn.Module):
             whisper_h: Whisper content features (B, T_w, 512)
             speaker_emb: Speaker embedding (B, 192)
             z1_mask: Optional padding mask (B, T), True = valid frames
+            language_id: Optional language index (B,) as LongTensor
 
         Returns:
             loss: Scalar MSE loss
@@ -142,7 +159,7 @@ class FlowW2NModel(nn.Module):
         v_target = z1 - z0
 
         # Predict velocity
-        v_pred = self.forward(zt, t, whisper_h, speaker_emb)
+        v_pred = self.forward(zt, t, whisper_h, speaker_emb, language_id=language_id)
 
         # MSE loss with optional masking
         if z1_mask is not None:
@@ -161,7 +178,7 @@ class FlowW2NModel(nn.Module):
         return loss, loss_dict
 
     @torch.no_grad()
-    def sample(self, z0, whisper_h, speaker_emb, num_steps=10):
+    def sample(self, z0, whisper_h, speaker_emb, num_steps=10, language_id=None):
         """Euler integration sampling.
 
         Solves the ODE: dz/dt = v_theta(z, t, c) from t=0 to t=1
@@ -172,6 +189,7 @@ class FlowW2NModel(nn.Module):
             whisper_h: Whisper content features (B, T_w, 512)
             speaker_emb: Speaker embedding (B, 192)
             num_steps: Number of Euler steps (default: 10)
+            language_id: Optional language index (B,) as LongTensor
 
         Returns:
             z1_pred: Predicted clean latent (B, 64, T)
@@ -185,7 +203,7 @@ class FlowW2NModel(nn.Module):
             t = torch.full((z.shape[0],), t_scalar, device=z.device, dtype=z.dtype)
 
             # Predict velocity at current state and timestep
-            v = self.forward(z, t, whisper_h, speaker_emb)
+            v = self.forward(z, t, whisper_h, speaker_emb, language_id=language_id)
 
             # Euler step: z_{t+dt} = z_t + dt * v_theta(z_t, t, c)
             z = z + dt * v

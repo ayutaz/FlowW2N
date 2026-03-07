@@ -85,13 +85,20 @@ class WERMetric:
         self._model.to(self.device).eval()
 
     @torch.no_grad()
-    def transcribe(self, audio: np.ndarray | torch.Tensor, sample_rate: int = 16000) -> list[str]:
+    def transcribe(
+        self,
+        audio: np.ndarray | torch.Tensor,
+        sample_rate: int = 16000,
+        language: str = "en",
+    ) -> list[str]:
         """Transcribe audio to text.
 
         Args:
             audio: Waveform of shape ``(samples,)`` or ``(batch, samples)``,
                    numpy array or torch tensor.
             sample_rate: Input sample rate (must be 16 000).
+            language: Language code for Whisper decoding (e.g. ``"en"``,
+                ``"ja"``). Default: ``"en"``.
 
         Returns:
             List of transcription strings, one per batch element.
@@ -113,9 +120,8 @@ class WERMetric:
                 return_tensors="pt",
             )
             input_features = inputs.input_features.to(self.device)
-            # Force English decoding
             forced_decoder_ids = self._processor.get_decoder_prompt_ids(
-                language="en",
+                language=language,
                 task="transcribe",
             )
             generated_ids = self._model.generate(
@@ -132,7 +138,11 @@ class WERMetric:
         return transcriptions
 
     def compute(
-        self, audio: np.ndarray | torch.Tensor, references: list[str], sample_rate: int = 16000
+        self,
+        audio: np.ndarray | torch.Tensor,
+        references: list[str],
+        sample_rate: int = 16000,
+        language: str = "en",
     ) -> float:
         """Compute WER between transcribed audio and reference texts.
 
@@ -141,13 +151,14 @@ class WERMetric:
                    ``(batch, samples)``.
             references: List of reference transcription strings.
             sample_rate: Input sample rate.
+            language: Language code for Whisper decoding (default: ``"en"``).
 
         Returns:
             Word error rate as a float (0.0 = perfect).
         """
         from jiwer import wer
 
-        hypotheses = self.transcribe(audio, sample_rate)
+        hypotheses = self.transcribe(audio, sample_rate, language=language)
         # jiwer expects matching-length lists
         if len(references) != len(hypotheses):
             raise ValueError(
@@ -490,6 +501,7 @@ class FlowW2NMetrics:
         reference_audio: np.ndarray | torch.Tensor | None = None,
         reference_text: str | list[str] | None = None,
         sample_rate: int = 16000,
+        language: str = "en",
     ) -> dict[str, float]:
         """Run all available metrics.
 
@@ -503,6 +515,7 @@ class FlowW2NMetrics:
             reference_text: Reference transcription(s) for WER.
                 A single string is treated as a one-element list.
             sample_rate: Sample rate of all waveforms.
+            language: Language code for WER transcription (default: ``"en"``).
 
         Returns:
             Dict mapping metric names to float scores.
@@ -518,6 +531,7 @@ class FlowW2NMetrics:
                     converted_audio,
                     reference_text,
                     sample_rate,
+                    language=language,
                 )
             except Exception as exc:
                 warnings.warn(f"WER-N computation failed: {exc}", stacklevel=2)
@@ -527,6 +541,7 @@ class FlowW2NMetrics:
                     converted_audio,
                     reference_text,
                     sample_rate,
+                    language=language,
                 )
             except Exception as exc:
                 warnings.warn(f"WER-W computation failed: {exc}", stacklevel=2)

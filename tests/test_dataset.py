@@ -93,3 +93,21 @@ class TestDitCollateFn:
         result = dit_collate_fn(batch)
         assert result["z1_mask"].dtype == torch.bool
         assert result["whisper_h_mask"].dtype == torch.bool
+
+    def test_language_id_batching(self):
+        """language_id should be batched as a LongTensor when present."""
+        batch = []
+        for lang_id in [0, 1, 0]:
+            sample = self._make_sample(16, 51)
+            sample["language_id"] = lang_id
+            batch.append(sample)
+        result = dit_collate_fn(batch)
+        assert "language_id" in result
+        assert result["language_id"].dtype == torch.long
+        assert result["language_id"].tolist() == [0, 1, 0]
+
+    def test_no_language_id_when_absent(self):
+        """language_id should not be in result when not in samples."""
+        batch = [self._make_sample(16, 51), self._make_sample(32, 102)]
+        result = dit_collate_fn(batch)
+        assert "language_id" not in result

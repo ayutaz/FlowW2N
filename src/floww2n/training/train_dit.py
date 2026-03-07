@@ -89,9 +89,17 @@ def train_dit(config_path, cache_dir, output_dir, vae_checkpoint=None, resume_fr
         # VAE compression ratio is 1024 (strides: 4*4*8*8)
         max_latent_length = max_audio_length // 1024
 
+    # Build language_map from config if multilingual
+    languages = model_cfg.get("languages", None)
+    language_map = None
+    if languages and len(languages) > 1:
+        language_map = {lang: idx for idx, lang in enumerate(languages)}
+        print(f"Multilingual training: {language_map}")
+
     dataset = DiTDataset(
         cache_dir=cache_dir,
         max_latent_length=max_latent_length,
+        language_map=language_map,
     )
     dataloader = DataLoader(
         dataset,
@@ -155,6 +163,9 @@ def train_dit(config_path, cache_dir, output_dir, vae_checkpoint=None, resume_fr
             whisper_h = batch["whisper_h"].to(device)  # (B, T_w, 512)
             speaker_emb = batch["speaker_emb"].to(device)  # (B, 192)
             z1_mask = batch["z1_mask"].to(device)  # (B, T)
+            language_id = batch.get("language_id")
+            if language_id is not None:
+                language_id = language_id.to(device)
 
             # Update learning rate (linear warmup + constant)
             lr = get_lr(global_step, warmup_steps, base_lr)
@@ -163,7 +174,9 @@ def train_dit(config_path, cache_dir, output_dir, vae_checkpoint=None, resume_fr
 
             # Forward pass with CFM loss
             with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=use_amp):
-                loss, loss_dict = model.compute_loss(z1, whisper_h, speaker_emb, z1_mask=z1_mask)
+                loss, loss_dict = model.compute_loss(
+                    z1, whisper_h, speaker_emb, z1_mask=z1_mask, language_id=language_id
+                )
                 loss = loss / grad_accum
 
             # Backward pass

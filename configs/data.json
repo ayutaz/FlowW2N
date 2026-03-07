@@ -6,6 +6,29 @@
     "mono": true,
     "normalize": true
   },
+  "datasets_multilingual": {
+    "en": {
+      "name": "nvidia/hifitts-2",
+      "source_sample_rate": 24000,
+      "target_sample_rate": 16000
+    },
+    "ja": {
+      "name": "JVS + JSUT",
+      "sources": {
+        "jvs": {
+          "speakers": 100,
+          "duration_hours": 30,
+          "source_sample_rate": 24000
+        },
+        "jsut": {
+          "speakers": 1,
+          "duration_hours": 10,
+          "source_sample_rate": 48000
+        }
+      },
+      "target_sample_rate": 16000
+    }
+  },
   "synthetic_whisper": {
     "methods": [
       "lpc_devoicing",

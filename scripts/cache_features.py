@@ -17,6 +17,7 @@ def cache_features(
     config_path="configs/vae.json",
     sample_rate=16000,
     device="cuda",
+    language=None,
 ):
     """Pre-compute and cache features for all audio files.
 
@@ -108,17 +109,18 @@ def cache_features(
             torch.save(z1, out_path / "vae_z1" / f"{stem}.pt")
             vae_z1_path = f"vae_z1/{stem}.pt"
 
-        manifest.append(
-            {
-                "audio_path": str(audio_path),
-                "stem": stem,
-                "whisper_h_path": f"whisper_h/{stem}.pt",
-                "speaker_path": f"speaker/{stem}.pt",
-                "vae_z1_path": vae_z1_path,
-                "audio_length_samples": len(audio),
-                "valid_whisper_frames": valid_frames,
-            }
-        )
+        entry = {
+            "audio_path": str(audio_path),
+            "stem": stem,
+            "whisper_h_path": f"whisper_h/{stem}.pt",
+            "speaker_path": f"speaker/{stem}.pt",
+            "vae_z1_path": vae_z1_path,
+            "audio_length_samples": len(audio),
+            "valid_whisper_frames": valid_frames,
+        }
+        if language is not None:
+            entry["language"] = language
+        manifest.append(entry)
 
     # Save manifest
     with open(out_path / "manifest.json", "w") as f:
@@ -140,6 +142,12 @@ def main():
     parser.add_argument("--config", type=str, default="configs/vae.json", help="Path to VAE config")
     parser.add_argument("--sample-rate", type=int, default=16000)
     parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument(
+        "--language",
+        type=str,
+        default=None,
+        help="Language tag to record in manifest (e.g. en, ja)",
+    )
     args = parser.parse_args()
 
     cache_features(
@@ -149,6 +157,7 @@ def main():
         config_path=args.config,
         sample_rate=args.sample_rate,
         device=args.device,
+        language=args.language,
     )
 
 

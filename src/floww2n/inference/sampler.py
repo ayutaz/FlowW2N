@@ -3,7 +3,7 @@
 import torch
 
 
-def euler_solve(model, z0, whisper_h, speaker_emb, num_steps=10, progress=False):
+def euler_solve(model, z0, whisper_h, speaker_emb, num_steps=10, progress=False, language_id=None):
     """Solve the ODE from t=0 to t=1 using forward Euler method.
 
     More flexible standalone interface compared to FlowW2NModel.sample().
@@ -16,6 +16,7 @@ def euler_solve(model, z0, whisper_h, speaker_emb, num_steps=10, progress=False)
         speaker_emb: Speaker embedding (B, 192)
         num_steps: Number of Euler steps (default: 10)
         progress: If True, print step progress
+        language_id: Optional language index (B,) as LongTensor
 
     Returns:
         z1: Final predicted latent (B, 64, T)
@@ -32,7 +33,7 @@ def euler_solve(model, z0, whisper_h, speaker_emb, num_steps=10, progress=False)
 
         # Predict velocity at current state and timestep
         with torch.no_grad():
-            v = model(z, t, whisper_h, speaker_emb)
+            v = model(z, t, whisper_h, speaker_emb, language_id=language_id)
 
         # Euler step: z_{t+dt} = z_t + dt * v_theta(z_t, t, c)
         z = z + dt * v
@@ -43,7 +44,7 @@ def euler_solve(model, z0, whisper_h, speaker_emb, num_steps=10, progress=False)
     return z
 
 
-def euler_solve_with_trajectory(model, z0, whisper_h, speaker_emb, num_steps=10):
+def euler_solve_with_trajectory(model, z0, whisper_h, speaker_emb, num_steps=10, language_id=None):
     """Like euler_solve but returns all intermediate states.
 
     Useful for visualization and analysis of the ODE trajectory.
@@ -54,6 +55,7 @@ def euler_solve_with_trajectory(model, z0, whisper_h, speaker_emb, num_steps=10)
         whisper_h: Whisper content features (B, T_w, 512)
         speaker_emb: Speaker embedding (B, 192)
         num_steps: Number of Euler steps (default: 10)
+        language_id: Optional language index (B,) as LongTensor
 
     Returns:
         trajectory: List of (B, 64, T) tensors, length num_steps+1.
@@ -70,7 +72,7 @@ def euler_solve_with_trajectory(model, z0, whisper_h, speaker_emb, num_steps=10)
 
         # Predict velocity at current state and timestep
         with torch.no_grad():
-            v = model(z, t, whisper_h, speaker_emb)
+            v = model(z, t, whisper_h, speaker_emb, language_id=language_id)
 
         # Euler step
         z = z + dt * v

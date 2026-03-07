@@ -27,17 +27,19 @@ class EvaluationPipeline:
 
     AUDIO_EXTENSIONS = {".wav", ".flac", ".mp3", ".ogg", ".opus", ".sph", ".m4a"}
 
-    def __init__(self, device="cpu", dnsmos_onnx_dir=None, sample_rate=16000):
+    def __init__(self, device="cpu", dnsmos_onnx_dir=None, sample_rate=16000, language="en"):
         """
         Args:
             device: Device for metric models
             dnsmos_onnx_dir: Optional DNSMOS ONNX model directory
             sample_rate: Expected audio sample rate
+            language: Language code for WER transcription (default: "en")
         """
         from floww2n.evaluation.metrics import FlowW2NMetrics
 
         self.metrics = FlowW2NMetrics(device=device, dnsmos_onnx_dir=dnsmos_onnx_dir)
         self.sample_rate = sample_rate
+        self.language = language
 
     def _load_audio(self, audio_path):
         """Load audio file and resample to target sample rate if needed.
@@ -79,6 +81,7 @@ class EvaluationPipeline:
             reference_audio=reference_audio,
             reference_text=reference_text,
             sample_rate=self.sample_rate,
+            language=self.language,
         )
 
     def evaluate_directory(self, converted_dir, reference_dir=None, transcript_file=None):

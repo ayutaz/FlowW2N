@@ -93,9 +93,10 @@ class DiTDataset(Dataset):
     # Frame rate ratio: whisper_hz / vae_hz = 50 / 15.625 = 3.2
     WHISPER_TO_VAE_RATIO = 50.0 / 15.625
 
-    def __init__(self, cache_dir, max_latent_length=None):
+    def __init__(self, cache_dir, max_latent_length=None, language_map=None):
         self.cache_dir = Path(cache_dir)
         self.max_latent_length = max_latent_length
+        self.language_map = language_map  # e.g. {"en": 0, "ja": 1}
 
         # Load manifest
         manifest_path = self.cache_dir / "manifest.json"
@@ -111,6 +112,17 @@ class DiTDataset(Dataset):
                 "Ensure VAE latents are cached (run cache_features.py with --vae-checkpoint)."
             )
 
+    def _resolve_path(self, path_str):
+        """Resolve a feature path from the manifest.
+
+        If the path is absolute it is used as-is; otherwise it is resolved
+        relative to ``self.cache_dir``.
+        """
+        p = Path(path_str)
+        if p.is_absolute():
+            return p
+        return self.cache_dir / p
+
     def __len__(self):
         return len(self.manifest)
 
@@ -118,14 +130,15 @@ class DiTDataset(Dataset):
         item = self.manifest[idx]
 
         # Load cached tensors
+        # Paths may be absolute (merged manifests) or relative to cache_dir
         z1 = torch.load(
-            self.cache_dir / item["vae_z1_path"], map_location="cpu", weights_only=True
+            self._resolve_path(item["vae_z1_path"]), map_location="cpu", weights_only=True
         )  # (64, L)
         whisper_h = torch.load(
-            self.cache_dir / item["whisper_h_path"], map_location="cpu", weights_only=True
+            self._resolve_path(item["whisper_h_path"]), map_location="cpu", weights_only=True
         )  # (T_w, 512)
         speaker_emb = torch.load(
-            self.cache_dir / item["speaker_path"], map_location="cpu", weights_only=True
+            self._resolve_path(item["speaker_path"]), map_location="cpu", weights_only=True
         )  # (192,)
 
         # Random crop if max_latent_length is set and sequence is longer
@@ -143,11 +156,17 @@ class DiTDataset(Dataset):
             end_w = min(start_w + length_w, whisper_h.shape[0])
             whisper_h = whisper_h[start_w:end_w]
 
-        return {
+        result = {
             "z1": z1,  # (64, L)
             "whisper_h": whisper_h,  # (T_w, 512)
             "speaker_emb": speaker_emb,  # (192,)
         }
+
+        # Add language_id if language_map is configured and manifest has language info
+        if self.language_map is not None and "language" in item:
+            result["language_id"] = self.language_map.get(item["language"], 0)
+
+        return result
 
 
 def dit_collate_fn(batch):
@@ -184,6 +203,9 @@ def dit_collate_fn(batch):
     whisper_mask = torch.zeros(batch_size, max_whisper_len, dtype=torch.bool)
     speaker_embs = []
 
+    language_ids = []
+    has_language = "language_id" in batch[0]
+
     for i, item in enumerate(batch):
         z1_len = item["z1"].shape[1]
         w_len = item["whisper_h"].shape[0]
@@ -194,10 +216,18 @@ def dit_collate_fn(batch):
         whisper_mask[i, :w_len] = True
         speaker_embs.append(item["speaker_emb"])
 
-    return {
+        if has_language:
+            language_ids.append(item["language_id"])
+
+    result = {
         "z1": z1_padded,
         "whisper_h": whisper_padded,
         "speaker_emb": torch.stack(speaker_embs),
         "z1_mask": z1_mask,
         "whisper_h_mask": whisper_mask,
     }
+
+    if has_language:
+        result["language_id"] = torch.tensor(language_ids, dtype=torch.long)
+
+    return result

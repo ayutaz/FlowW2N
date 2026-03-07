@@ -22,11 +22,18 @@ def main():
     )
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--dnsmos-onnx-dir", type=str, default=None)
+    parser.add_argument(
+        "--language",
+        type=str,
+        default="en",
+        help="Language code for WER transcription (default: en)",
+    )
     args = parser.parse_args()
 
     evaluator = EvaluationPipeline(
         device=args.device,
         dnsmos_onnx_dir=args.dnsmos_onnx_dir,
+        language=args.language,
     )
     results = evaluator.evaluate_directory(
         converted_dir=args.converted_dir,

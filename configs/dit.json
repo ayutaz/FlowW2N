@@ -9,7 +9,9 @@
     "global_cond_dim": 768,
     "global_cond_type": "adaLN",
     "cross_attend": true,
-    "diffusion_objective": "rectified_flow"
+    "diffusion_objective": "rectified_flow",
+    "num_languages": 2,
+    "languages": ["en", "ja"]
   },
   "conditioning": {
     "content_encoder": {
