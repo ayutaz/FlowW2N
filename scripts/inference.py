@@ -98,6 +98,13 @@ def main():
         default=None,
         help="Language code for multilingual models (e.g. en, ja)",
     )
+    parser.add_argument(
+        "--solver",
+        type=str,
+        default="euler",
+        choices=["euler", "heun"],
+        help="ODE solver: euler (1st order) or heun (2nd order, fewer steps needed) (default: euler)",
+    )
     args = parser.parse_args()
 
     # Validate device
@@ -146,6 +153,7 @@ def main():
             num_steps=args.num_steps,
             seed=args.seed,
             language=args.language,
+            solver=args.solver,
         )
 
         # audio_out is (batch, samples); take first element

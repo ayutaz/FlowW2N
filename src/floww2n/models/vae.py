@@ -21,7 +21,8 @@ def WNConvTranspose1d(*args, **kwargs):
 
 def snake_beta(x, alpha, beta):
     """Snake activation with beta parameter."""
-    return x + (1.0 / (beta + 0.000000001)) * torch.pow(torch.sin(x * alpha), 2)
+    sin_val = torch.sin(x * alpha)
+    return x + (1.0 / (beta + 1e-9)) * (sin_val * sin_val)
 
 
 class SnakeBeta(nn.Module):
@@ -556,6 +557,18 @@ class AudioAutoencoder(nn.Module):
         z, info = self.encode(x)
         reconstructed = self.decode(z)
         return reconstructed, info
+
+    def remove_weight_norm(self):
+        """Remove weight normalization for faster inference."""
+        import torch.nn.utils.parametrize as parametrize
+
+        for module in self.modules():
+            if isinstance(module, nn.Conv1d):
+                try:
+                    parametrize.remove_parametrizations(module, "weight")
+                except ValueError:
+                    pass  # No parametrization to remove
+        return self
 
 
 if __name__ == "__main__":

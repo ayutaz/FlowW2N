@@ -1,6 +1,7 @@
 """VAE training script with multi-resolution STFT + discriminator + KL loss."""
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import torch
@@ -11,6 +12,21 @@ from torch.utils.data import DataLoader
 from floww2n.models.vae import AudioAutoencoder
 from floww2n.training.dataset import VAEDataset
 from floww2n.training.losses import VAELoss
+
+_ckpt_executor = ThreadPoolExecutor(max_workers=1)
+
+
+def setup_cuda_optimizations():
+    """Configure CUDA optimizations for faster training."""
+    if not torch.cuda.is_available():
+        return
+    torch.backends.cudnn.benchmark = True
+    # TF32 for Ampere+ GPUs
+    if torch.cuda.get_device_capability()[0] >= 8:
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+    if hasattr(torch, "set_float32_matmul_precision"):
+        torch.set_float32_matmul_precision("high")
 
 
 def load_config(config_path):
@@ -35,6 +51,7 @@ def train_vae(config_path, data_dir, output_dir, resume_from=None):
     loss_cfg = config["losses"]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    setup_cuda_optimizations()
 
     # Model
     model = AudioAutoencoder(
@@ -55,16 +72,24 @@ def train_vae(config_path, data_dir, output_dir, resume_from=None):
         kl_weight=loss_cfg["kl_weight"],
     ).to(device)
 
+    # torch.compile
+    if train_cfg.get("compile", False) and hasattr(torch, "compile"):
+        model = torch.compile(model)
+        criterion.discriminator = torch.compile(criterion.discriminator)
+
     # Optimizers (separate for generator and discriminator)
+    fused = device.type == "cuda"
     opt_g = torch.optim.AdamW(
         model.parameters(),
         lr=train_cfg["learning_rate"],
         weight_decay=train_cfg["weight_decay"],
+        fused=fused,
     )
     opt_d = torch.optim.AdamW(
         criterion.discriminator.parameters(),
         lr=train_cfg["learning_rate"],
         weight_decay=train_cfg["weight_decay"],
+        fused=fused,
     )
 
     # EMA
@@ -137,7 +162,7 @@ def train_vae(config_path, data_dir, output_dir, resume_from=None):
             if (global_step + 1) % grad_accum == 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 opt_g.step()
-                opt_g.zero_grad()
+                opt_g.zero_grad(set_to_none=True)
                 ema.update()
 
             # === Discriminator step ===
@@ -149,7 +174,7 @@ def train_vae(config_path, data_dir, output_dir, resume_from=None):
 
             if (global_step + 1) % grad_accum == 0:
                 opt_d.step()
-                opt_d.zero_grad()
+                opt_d.zero_grad(set_to_none=True)
 
             # Logging
             if global_step % 100 == 0:
@@ -174,8 +199,19 @@ def train_vae(config_path, data_dir, output_dir, resume_from=None):
     print(f"Training complete. Final step: {global_step}")
 
 
-def save_checkpoint(output_path, model, criterion, opt_g, opt_d, ema, global_step):
-    """Save training checkpoint."""
+def save_checkpoint(output_path, model, criterion, opt_g, opt_d, ema, global_step, max_keep=3):
+    """Save training checkpoint asynchronously.
+
+    Args:
+        output_path: Directory to save checkpoint
+        model: AudioAutoencoder model
+        criterion: VAELoss (contains discriminator)
+        opt_g: Generator optimizer
+        opt_d: Discriminator optimizer
+        ema: EMA wrapper
+        global_step: Current training step
+        max_keep: Maximum number of checkpoints to keep
+    """
     checkpoint = {
         "model": model.state_dict(),
         "criterion": criterion.state_dict(),
@@ -184,5 +220,14 @@ def save_checkpoint(output_path, model, criterion, opt_g, opt_d, ema, global_ste
         "ema": ema.state_dict(),
         "global_step": global_step,
     }
-    torch.save(checkpoint, output_path / f"checkpoint_{global_step}.pt")
-    print(f"Saved checkpoint at step {global_step}")
+    path = output_path / f"checkpoint_{global_step}.pt"
+
+    def _save():
+        torch.save(checkpoint, path)
+        # Remove old checkpoints
+        ckpts = sorted(output_path.glob("checkpoint_*.pt"))
+        for old in ckpts[:-max_keep]:
+            old.unlink()
+        print(f"Saved checkpoint at step {global_step}")
+
+    _ckpt_executor.submit(_save)

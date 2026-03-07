@@ -5,7 +5,7 @@ import pytest
 import torch
 
 from floww2n.inference.pipeline import FlowW2NPipeline
-from floww2n.inference.sampler import euler_solve, euler_solve_with_trajectory
+from floww2n.inference.sampler import euler_solve, euler_solve_with_trajectory, heun_solve
 from floww2n.models.floww2n import FlowW2NModel
 from floww2n.models.vae import AudioAutoencoder
 
@@ -258,6 +258,101 @@ class TestEulerSampler:
         )
 
         assert torch.allclose(z1_solve, trajectory[-1], atol=1e-5)
+
+
+class TestHeunSolver:
+    """Tests for the Heun (2nd order) ODE solver."""
+
+    @pytest.fixture
+    def model(self):
+        return FlowW2NModel(
+            dit_config=SMALL_DIT_CONFIG,
+            speaker_dim=SPEAKER_DIM,
+        )
+
+    def test_heun_solve_shape(self, model):
+        """Heun solver output has correct shape."""
+        z0 = torch.randn(B, 64, T_LATENT)
+        whisper_h = torch.randn(B, T_WHISPER, 512)
+        speaker_emb = torch.randn(B, SPEAKER_DIM)
+
+        z1 = heun_solve(model, z0, whisper_h, speaker_emb, num_steps=3)
+
+        assert z1.shape == (B, 64, T_LATENT)
+        assert torch.isfinite(z1).all()
+
+    def test_heun_solve_same_shape_as_euler(self, model):
+        """Heun and Euler both produce valid outputs with the same shape."""
+        z0 = torch.randn(B, 64, T_LATENT)
+        whisper_h = torch.randn(B, T_WHISPER, 512)
+        speaker_emb = torch.randn(B, SPEAKER_DIM)
+
+        z1_euler = euler_solve(model, z0.clone(), whisper_h, speaker_emb, num_steps=3)
+        z1_heun = heun_solve(model, z0.clone(), whisper_h, speaker_emb, num_steps=3)
+
+        assert z1_euler.shape == z1_heun.shape
+        assert torch.isfinite(z1_euler).all()
+        assert torch.isfinite(z1_heun).all()
+
+    def test_floww2n_sample_with_heun(self, model):
+        """FlowW2NModel.sample() works with solver='heun'."""
+        z0 = torch.randn(B, 64, T_LATENT)
+        whisper_h = torch.randn(B, T_WHISPER, 512)
+        speaker_emb = torch.randn(B, SPEAKER_DIM)
+
+        z1 = model.sample(z0, whisper_h, speaker_emb, num_steps=3, solver="heun")
+
+        assert z1.shape == (B, 64, T_LATENT)
+        assert torch.isfinite(z1).all()
+
+
+class TestOptimizations:
+    """Tests for optimization features (weight norm removal, pos emb cache)."""
+
+    def test_remove_weight_norm(self):
+        """VAE remove_weight_norm runs without error and model still works."""
+        vae = AudioAutoencoder(**SMALL_VAE_CONFIG)
+        x = torch.randn(1, 1, 4096)
+
+        # Remove weight norm
+        vae.remove_weight_norm()
+
+        # Model should still produce valid output
+        with torch.no_grad():
+            out, info = vae(x)
+
+        assert out.shape == x.shape
+        assert torch.isfinite(out).all()
+        assert "kl_loss" in info
+
+    def test_pos_emb_cache(self):
+        """DiffusionTransformer caches positional embeddings."""
+        from floww2n.models.dit import DiffusionTransformer
+
+        dit = DiffusionTransformer(
+            io_channels=64,
+            embed_dim=128,
+            depth=2,
+            num_heads=4,
+            head_dim=32,
+            global_cond_dim=128,
+        )
+        dit.eval()
+
+        x = torch.randn(1, 64, 10)
+        t = torch.tensor([0.5])
+        global_cond = torch.randn(1, 128)
+
+        # First forward: cache should be populated
+        with torch.no_grad():
+            _ = dit(x, t, global_cond=global_cond)
+        assert dit._pos_emb_cache is not None
+        assert dit._pos_emb_cache_len == 10
+
+        # Second forward with same length: cache should be reused
+        with torch.no_grad():
+            _ = dit(x, t, global_cond=global_cond)
+        assert dit._pos_emb_cache_len == 10
 
 
 class TestEvaluationMetrics:

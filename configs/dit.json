@@ -11,7 +11,8 @@
     "cross_attend": true,
     "diffusion_objective": "rectified_flow",
     "num_languages": 2,
-    "languages": ["en", "ja"]
+    "languages": ["en", "ja"],
+    "gradient_checkpointing": true
   },
   "conditioning": {
     "content_encoder": {

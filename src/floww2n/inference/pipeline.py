@@ -66,6 +66,10 @@ class FlowW2NPipeline:
         self.content_encoder.to(device).eval()
         # SpeakerEncoder uses internal device management via speechbrain
 
+        # Remove weight normalization from VAE for faster inference
+        if hasattr(self.vae, "remove_weight_norm"):
+            self.vae.remove_weight_norm()
+
     @classmethod
     def from_pretrained(
         cls,
@@ -160,7 +164,14 @@ class FlowW2NPipeline:
 
     @torch.no_grad()
     def __call__(
-        self, audio, sample_rate=16000, num_steps=None, seed=None, speaker_audio=None, language=None
+        self,
+        audio,
+        sample_rate=16000,
+        num_steps=None,
+        seed=None,
+        speaker_audio=None,
+        language=None,
+        solver="euler",
     ):
         """Run whisper-to-normal conversion.
 
@@ -174,6 +185,7 @@ class FlowW2NPipeline:
             speaker_audio: Optional separate audio for speaker embedding.
                           If None, uses the whisper audio itself for speaker identity.
             language: Optional language code (e.g. "en", "ja") for multilingual models.
+            solver: ODE solver, "euler" or "heun" (default: "euler").
 
         Returns:
             audio_out: Converted normal speech (batch, samples) as torch.Tensor
@@ -199,7 +211,18 @@ class FlowW2NPipeline:
             audio_tensor = resampler(audio_tensor)
             sample_rate = 16000
 
-        audio_tensor = audio_tensor.to(self.device)
+        # Use pinned memory for faster CPU->GPU transfer when using CUDA
+        if (
+            self.device.type == "cuda"
+            if isinstance(self.device, torch.device)
+            else str(self.device).startswith("cuda")
+        ):
+            if audio_tensor.device.type == "cpu":
+                audio_tensor = audio_tensor.pin_memory().to(self.device, non_blocking=True)
+            else:
+                audio_tensor = audio_tensor.to(self.device)
+        else:
+            audio_tensor = audio_tensor.to(self.device)
 
         # 3. Extract content features via ContentEncoder -> (B, 1500, 512)
         # ContentEncoder accepts numpy or tensor and handles conversion internally
@@ -253,9 +276,9 @@ class FlowW2NPipeline:
                 )
             language_id = torch.full((batch_size,), lang_idx, device=self.device, dtype=torch.long)
 
-        # 8. Euler integration via FlowW2NModel.sample()
+        # 8. ODE integration via FlowW2NModel.sample()
         z1 = self.floww2n_model.sample(
-            z0, whisper_h, speaker_emb, num_steps=steps, language_id=language_id
+            z0, whisper_h, speaker_emb, num_steps=steps, language_id=language_id, solver=solver
         )
 
         # 9. Decode via VAE decoder -> (B, 1, T')

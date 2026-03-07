@@ -10,6 +10,7 @@ Trains the FlowW2NModel (DiT backbone + speaker projection) using:
 """
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import torch
@@ -19,6 +20,21 @@ from torch.utils.data import DataLoader
 
 from floww2n.models.floww2n import FlowW2NModel
 from floww2n.training.dataset import DiTDataset, dit_collate_fn
+
+_ckpt_executor = ThreadPoolExecutor(max_workers=1)
+
+
+def setup_cuda_optimizations():
+    """Configure CUDA optimizations for faster training."""
+    if not torch.cuda.is_available():
+        return
+    torch.backends.cudnn.benchmark = True
+    # TF32 for Ampere+ GPUs
+    if torch.cuda.get_device_capability()[0] >= 8:
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+    if hasattr(torch, "set_float32_matmul_precision"):
+        torch.set_float32_matmul_precision("high")
 
 
 def load_config(config_path):
@@ -59,6 +75,7 @@ def train_dit(config_path, cache_dir, output_dir, vae_checkpoint=None, resume_fr
     cond_cfg = config.get("conditioning", {})
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    setup_cuda_optimizations()
 
     # Model
     speaker_dim = cond_cfg.get("speaker_encoder", {}).get("output_dim", 192)
@@ -71,11 +88,17 @@ def train_dit(config_path, cache_dir, output_dir, vae_checkpoint=None, resume_fr
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {total_params:,} total, {trainable_params:,} trainable")
 
+    # torch.compile
+    if train_cfg.get("compile", False) and hasattr(torch, "compile"):
+        model = torch.compile(model)
+
     # Optimizer (single AdamW, no discriminator)
+    fused = device.type == "cuda"
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=train_cfg["learning_rate"],
         weight_decay=train_cfg["weight_decay"],
+        fused=fused,
     )
 
     # EMA
@@ -190,7 +213,7 @@ def train_dit(config_path, cache_dir, output_dir, vae_checkpoint=None, resume_fr
                 torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
 
                 optimizer.step()
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)
                 ema.update()
 
             # Logging
@@ -218,8 +241,8 @@ def train_dit(config_path, cache_dir, output_dir, vae_checkpoint=None, resume_fr
     print(f"Training complete. Final step: {global_step}")
 
 
-def save_checkpoint(output_path, model, optimizer, ema, global_step):
-    """Save training checkpoint.
+def save_checkpoint(output_path, model, optimizer, ema, global_step, max_keep=3):
+    """Save training checkpoint asynchronously.
 
     Args:
         output_path: Directory to save checkpoint
@@ -227,6 +250,7 @@ def save_checkpoint(output_path, model, optimizer, ema, global_step):
         optimizer: AdamW optimizer
         ema: EMA wrapper
         global_step: Current training step
+        max_keep: Maximum number of checkpoints to keep
     """
     checkpoint = {
         "model": model.state_dict(),
@@ -234,5 +258,14 @@ def save_checkpoint(output_path, model, optimizer, ema, global_step):
         "ema": ema.state_dict(),
         "global_step": global_step,
     }
-    torch.save(checkpoint, output_path / f"checkpoint_{global_step}.pt")
-    print(f"Saved checkpoint at step {global_step}")
+    path = output_path / f"checkpoint_{global_step}.pt"
+
+    def _save():
+        torch.save(checkpoint, path)
+        # Remove old checkpoints
+        ckpts = sorted(output_path.glob("checkpoint_*.pt"))
+        for old in ckpts[:-max_keep]:
+            old.unlink()
+        print(f"Saved checkpoint at step {global_step}")
+
+    _ckpt_executor.submit(_save)

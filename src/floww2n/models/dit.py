@@ -438,6 +438,10 @@ class DiffusionTransformer(nn.Module):
         nn.init.zeros_(self.output_proj.weight)
         nn.init.zeros_(self.output_proj.bias)
 
+        # Positional embedding cache for inference
+        self._pos_emb_cache: torch.Tensor | None = None
+        self._pos_emb_cache_len: int = 0
+
     def forward(
         self,
         x: torch.Tensor,
@@ -481,8 +485,17 @@ class DiffusionTransformer(nn.Module):
         if self.cross_attend and cross_attn_cond is not None:
             cross_cond = self.cond_token_proj(cross_attn_cond)  # (B, T_w, embed_dim)
 
-        # 5. Positional embedding
-        pos_emb = sinusoidal_positional_embedding(T, self.head_dim, device=x.device)
+        # 5. Positional embedding (cached for inference)
+        if (
+            self._pos_emb_cache is not None
+            and T <= self._pos_emb_cache_len
+            and self._pos_emb_cache.device == x.device
+        ):
+            pos_emb = self._pos_emb_cache[:, :T, :]
+        else:
+            pos_emb = sinusoidal_positional_embedding(T, self.head_dim, device=x.device)
+            self._pos_emb_cache = pos_emb
+            self._pos_emb_cache_len = T
 
         # 6. Transformer blocks
         for block in self.blocks:

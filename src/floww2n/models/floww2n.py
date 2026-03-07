@@ -178,37 +178,44 @@ class FlowW2NModel(nn.Module):
         return loss, loss_dict
 
     @torch.no_grad()
-    def sample(self, z0, whisper_h, speaker_emb, num_steps=10, language_id=None):
-        """Euler integration sampling.
+    def sample(self, z0, whisper_h, speaker_emb, num_steps=10, language_id=None, solver="euler"):
+        """ODE integration sampling.
 
-        Solves the ODE: dz/dt = v_theta(z, t, c) from t=0 to t=1
-        using forward Euler method with uniform step size.
+        Solves the ODE: dz/dt = v_theta(z, t, c) from t=0 to t=1.
 
         Args:
             z0: Initial noise (B, 64, T) ~ N(0, I)
             whisper_h: Whisper content features (B, T_w, 512)
             speaker_emb: Speaker embedding (B, 192)
-            num_steps: Number of Euler steps (default: 10)
+            num_steps: Number of integration steps (default: 10)
             language_id: Optional language index (B,) as LongTensor
+            solver: ODE solver to use, "euler" (1st order) or "heun" (2nd order).
+                Heun achieves similar quality with fewer steps but costs 2 NFE/step.
 
         Returns:
             z1_pred: Predicted clean latent (B, 64, T)
         """
-        dt = 1.0 / num_steps
-        z = z0
+        # Lazy import to avoid circular dependency (sampler -> __init__ -> pipeline -> floww2n)
+        from ..inference.sampler import euler_solve, heun_solve
 
-        for i in range(num_steps):
-            # Current timestep as scalar, then expand to batch
-            t_scalar = i * dt
-            t = torch.full((z.shape[0],), t_scalar, device=z.device, dtype=z.dtype)
-
-            # Predict velocity at current state and timestep
-            v = self.forward(z, t, whisper_h, speaker_emb, language_id=language_id)
-
-            # Euler step: z_{t+dt} = z_t + dt * v_theta(z_t, t, c)
-            z = z + dt * v
-
-        return z
+        if solver == "heun":
+            return heun_solve(
+                self,
+                z0,
+                whisper_h,
+                speaker_emb,
+                num_steps=num_steps,
+                language_id=language_id,
+            )
+        else:
+            return euler_solve(
+                self,
+                z0,
+                whisper_h,
+                speaker_emb,
+                num_steps=num_steps,
+                language_id=language_id,
+            )
 
 
 if __name__ == "__main__":
