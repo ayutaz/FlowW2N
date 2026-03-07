@@ -212,7 +212,7 @@ Ph3         [========]     DiT・Flow Matching・推論・評価コード
 - [x] train_dit.py でダミーデータ 1 step 実行成功
 - [x] DiTDataset + collate 関数の単体テスト通過
 
-**完了基準**: DiT の入力→速度場出力→損失計算が正常動作。 **(達成済み: dit.py ~580行, floww2n.py ~260行, DiTDataset + dit_collate_fn, ~205M params, 9テスト通過, 合計18/18テスト通過)**
+**完了基準**: DiT の入力→速度場出力→損失計算が正常動作。 **(達成済み: dit.py ~580行, floww2n.py ~260行, DiTDataset + dit_collate_fn, ~205M params, 14テスト通過, 合計23/23テスト通過)**
 
 ### M4: 推論・評価パイプライン完成 --- COMPLETE
 
@@ -234,10 +234,10 @@ Ph3         [========]     DiT・Flow Matching・推論・評価コード
 - [x] masked CFM loss 対応
 - [x] DataLoader最適化（persistent_workers, prefetch_factor）
 - [x] ContentEncoder のdevice管理修正
-- [x] テスト追加: 34 → 72テスト（+38テスト）
+- [x] テスト追加: 34 → 79テスト（+45テスト）
 - [x] ruff lint/format 設定・適用（0 errors, 36ファイル）
 
-**完了基準**: 全テスト通過、lint 0エラー、全ファイルフォーマット済み。 **(達成済み: 72/72テスト通過, ruff check 0 errors, ruff format 36 files)**
+**完了基準**: 全テスト通過、lint 0エラー、全ファイルフォーマット済み。 **(達成済み: 79/79テスト通過, ruff check 0 errors, ruff format 36 files)**
 
 ---
 
@@ -296,12 +296,12 @@ FlowW2N/
 │   ├── train_dit.py
 │   ├── inference.py
 │   └── evaluate.py
-└── tests/                         # テスト (72 tests)
+└── tests/                         # テスト (79 tests)
     ├── test_vae.py                # VAEテスト (9)
-    ├── test_dit.py                # DiT/FlowW2Nテスト (9)
+    ├── test_dit.py                # DiT/FlowW2Nテスト (14)
     ├── test_losses.py             # 損失関数テスト (12)
     ├── test_pipeline.py           # パイプラインテスト (16)
-    ├── test_dataset.py            # データセットテスト (7)
+    ├── test_dataset.py            # データセットテスト (9)
     ├── test_whisper_synthesis.py   # 合成ウィスパーテスト (11)
     └── test_training.py           # 学習ユーティリティテスト (8)
 ```
@@ -328,7 +328,7 @@ FlowW2N/
 | +1 | 合成ウィスパー残り3手法 | 全4手法の WhisperSynthesizer | **✅ 完了** |
 | +2 | 学習スクリプト完成 | train_vae.py, train_dit.py が実行可能 | **✅ 完了** |
 | +3 | 評価パイプライン | 全5指標の計算コード | **✅ 完了** |
-| +4 | 設定ファイル・テスト | configs/, tests/ の整備 | **✅ 完了** (72/72テスト通過) |
+| +4 | 設定ファイル・テスト | configs/, tests/ の整備 | **✅ 完了** (79/79テスト通過) |
 | +5 | 品質監査 | バグ修正、最適化、ruff lint/format | **✅ 完了** |
 
 ---
@@ -338,5 +338,5 @@ FlowW2N/
 1. **全マイルストーン (M0-M5) 完了**: 環境構築からVAE、条件付け、DiT、推論・評価、品質監査まで全工程のコードが完成
 2. **論文未記載パラメータ** は SA2.0 と DiT 原論文から推定（embed_dim=768, lr=1.5e-4 等）
 3. **品質監査で19件の問題を特定・修正**: KL係数、gradient checkpointing、masked loss、DataLoader最適化等
-4. **72テスト通過、ruff lint 0エラー**: コード品質を継続的に担保
+4. **79テスト通過、ruff lint 0エラー**: コード品質を継続的に担保
 5. **成果物**: 学習環境にデプロイ可能な再現実装コード一式（モデル、学習スクリプト、推論・評価パイプライン）

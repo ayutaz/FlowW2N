@@ -7,7 +7,7 @@
 > - ✅ `src/floww2n/inference/sampler.py` - Euler sampler (FlowW2NModel.sample()に統合済み)
 > - ✅ `src/floww2n/evaluation/metrics.py` - 評価指標 (WER, UTMOS, DNSMOS, SpkSim)
 > - ✅ `src/floww2n/evaluation/evaluate.py` - 評価パイプライン
-> - テスト: test_pipeline.py (16 tests), test_dit.py (9 tests)
+> - テスト: test_pipeline.py (16 tests), test_dit.py (14 tests)
 > - コード品質: ruff lint/format 適用済み
 
 本ドキュメントでは、FlowW2N の再現実装に必要な条件付けモジュール（Whisper encoder, ECAPA-TDNN）、推論パイプライン、および評価パイプラインの実装計画を策定する。

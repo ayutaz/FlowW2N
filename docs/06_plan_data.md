@@ -5,7 +5,7 @@
 > - `src/floww2n/training/dataset.py` - VAEDataset + DiTDataset + dit_collate_fn
 > - `scripts/generate_whisper.py` - バッチ合成ウィスパー生成スクリプト
 > - `scripts/cache_features.py` - 特徴量キャッシュスクリプト (Whisper h, ECAPA e_spk, VAE z1)
-> - テスト: test_dataset.py (7 tests), test_whisper_synthesis.py (11 tests), test_training.py (8 tests)
+> - テスト: test_dataset.py (9 tests), test_whisper_synthesis.py (11 tests), test_training.py (8 tests)
 > - コード品質: ruff lint/format 適用済み
 
 本ドキュメントでは、FlowW2N 再現実装に必要なデータパイプラインの全体計画を記載する。

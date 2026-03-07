@@ -356,7 +356,7 @@ z1 --> VAE Decoder D --> s_hat (通常音声の推定)
 ### D. 推論と評価
 - [x] 推論パイプライン構築 (FlowW2NPipeline, Euler 積分 N=10)
 - [x] 評価パイプライン構築 (WER-N, WER-W, UTMOS, DNSMOS, SpkSim)
-- [x] 統合テスト通過 (72テスト)
+- [x] 統合テスト通過 (79テスト)
 - [ ] wTIMIT での評価実行
 - [ ] CHAINS での評価実行
 - [ ] 結果の論文値との比較

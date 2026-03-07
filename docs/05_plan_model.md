@@ -6,7 +6,7 @@
 > - `src/floww2n/models/floww2n.py` - FlowW2NModel (CFM loss + Euler sampling, masked loss対応)
 > - `src/floww2n/training/losses.py` - Multi-res STFT + Discriminator + KL loss (feature_matching detach修正済み)
 > - `src/floww2n/training/train_vae.py` / `train_dit.py` - 学習ループ (bf16最適化、DataLoader高速化)
-> - テスト: 72 tests passing (test_vae 9, test_dit 9, test_losses 12, test_pipeline 16, test_dataset 7, test_whisper_synthesis 11, test_training 8)
+> - テスト: 79 tests passing (test_vae 9, test_dit 14, test_losses 12, test_pipeline 16, test_dataset 9, test_whisper_synthesis 11, test_training 8)
 > - コード品質: ruff lint 0 errors, ruff format 全36ファイル適用済み
 
 本ドキュメントでは、FlowW2N の再現実装に必要なコアモデル（VAE と DiT）の実装計画を策定する。stable-audio-tools の調査結果に基づき、Oobleck VAE と DiffusionTransformer の適応方針を詳述する。
@@ -77,7 +77,7 @@ io_channels=64, embed_dim=1536, depth=24, num_heads=24, cond_token_dim=768, glob
 
 ### 1.7 依存関係
 
-torch>=2.5.1, torchaudio>=2.5.1, pytorch_lightning==2.1.0, einops, alias-free-torch==0.0.6, auraloss==0.4.0, ema-pytorch==0.2.3, flash-attn(optional)
+torch>=2.6.0, torchaudio>=2.6.0, torchcodec>=0.10.0, pytorch_lightning==2.1.0, einops, alias-free-torch==0.0.6, auraloss==0.4.0, ema-pytorch==0.2.3, flash-attn(optional)
 
 ---
 
@@ -234,7 +234,7 @@ Phase4(W5-6): 評価(WER,UTMOS,DNSMOS,SpkSim)
 
 ## 7. 依存関係案
 
-torch>=2.1.0, torchaudio, pytorch-lightning, transformers>=4.36.0, speechbrain>=1.0.0, einops, alias-free-torch==0.0.6, auraloss==0.4.0, ema-pytorch>=0.2.3, datasets, librosa, soundfile, jiwer, wandb, safetensors. Python>=3.11,<3.13
+torch>=2.6.0, torchaudio, torchcodec>=0.10.0, pytorch-lightning, transformers>=4.36.0, speechbrain>=1.0.0, einops, alias-free-torch==0.0.6, auraloss==0.4.0, ema-pytorch>=0.2.3, datasets, librosa, soundfile, jiwer, wandb, safetensors. Python>=3.11,<3.13
 
 ---
 

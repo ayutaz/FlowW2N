@@ -175,13 +175,14 @@ FlowW2N/
 │   ├── generate_whisper.py
 │   ├── inference.py
 │   ├── evaluate.py
-│   └── preprocess_data.py
-├── tests/                          # Tests (72 passing)
+│   ├── preprocess_data.py
+│   └── smoke_test_training.py
+├── tests/                          # Tests (79 passing)
 │   ├── test_vae.py                 #   9 tests
-│   ├── test_dit.py                 #   9 tests
+│   ├── test_dit.py                 #   14 tests
 │   ├── test_losses.py              #   12 tests
 │   ├── test_pipeline.py            #   16 tests
-│   ├── test_dataset.py             #   7 tests
+│   ├── test_dataset.py             #   9 tests
 │   ├── test_whisper_synthesis.py    #   11 tests
 │   └── test_training.py            #   8 tests
 └── docs/                           # Documentation
@@ -200,15 +201,15 @@ FlowW2N/
 ### Tests
 
 ```bash
-# Run all tests (72 tests)
+# Run all tests (79 tests)
 uv run pytest tests/ -v
 
 # Run specific test modules
 uv run pytest tests/test_vae.py -v        # VAE (9)
-uv run pytest tests/test_dit.py -v        # DiT (9)
+uv run pytest tests/test_dit.py -v        # DiT (14)
 uv run pytest tests/test_losses.py -v     # Losses (12)
 uv run pytest tests/test_pipeline.py -v   # Pipeline (16)
-uv run pytest tests/test_dataset.py -v    # Dataset (7)
+uv run pytest tests/test_dataset.py -v    # Dataset (9)
 uv run pytest tests/test_whisper_synthesis.py -v  # Whisper synthesis (11)
 uv run pytest tests/test_training.py -v   # Training utils (8)
 ```

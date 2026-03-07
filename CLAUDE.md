@@ -53,9 +53,9 @@ src/floww2n/           # メインパッケージ
     evaluate.py        # 評価実行スクリプト
 configs/               # 設定ファイル (vae.json, dit.json, data.json)
 scripts/               # エントリポイントスクリプト
-  train_vae.py, train_dit.py, cache_features.py, generate_whisper.py, inference.py, evaluate.py, preprocess_data.py
-tests/                 # テスト (72 tests passing)
-  test_vae.py (9), test_dit.py (9), test_losses.py (12), test_pipeline.py (16), test_dataset.py (7), test_whisper_synthesis.py (11), test_training.py (8)
+  train_vae.py, train_dit.py, cache_features.py, generate_whisper.py, inference.py, evaluate.py, preprocess_data.py, smoke_test_training.py
+tests/                 # テスト (79 tests passing)
+  test_vae.py (9), test_dit.py (14), test_losses.py (12), test_pipeline.py (16), test_dataset.py (9), test_whisper_synthesis.py (11), test_training.py (8)
 ```
 
 ## 設定ファイル
@@ -110,12 +110,12 @@ tests/                 # テスト (72 tests passing)
 ## テスト実行
 
 ```bash
-uv run pytest tests/ -v   # 全テスト実行 (72 tests)
+uv run pytest tests/ -v   # 全テスト実行 (79 tests)
 uv run pytest tests/test_vae.py -v  # VAE テストのみ (9)
-uv run pytest tests/test_dit.py -v  # DiT テストのみ (9)
+uv run pytest tests/test_dit.py -v  # DiT テストのみ (14)
 uv run pytest tests/test_losses.py -v  # 損失関数テスト (12)
 uv run pytest tests/test_pipeline.py -v  # パイプラインテスト (16)
-uv run pytest tests/test_dataset.py -v  # データセットテスト (7)
+uv run pytest tests/test_dataset.py -v  # データセットテスト (9)
 uv run pytest tests/test_whisper_synthesis.py -v  # 合成ウィスパーテスト (11)
 uv run pytest tests/test_training.py -v  # 学習テスト (8)
 uv run ruff check src/ tests/ scripts/  # lint チェック
