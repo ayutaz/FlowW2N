@@ -8,3 +8,10 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Training outputs and model caches
+outputs/
+pretrained_models/
+
+# Claude Code
+.claude/
