@@ -18,7 +18,9 @@ FlowW2Nは3つの主要コンポーネントで構成される:
 2. **DiT (Diffusion Transformer)**: 24 transformer blocks。ガウスノイズz0~N(0,I)から条件付き速度場を学習。AdaLNでタイムステップ・話者埋め込みを注入、cross-attentionでコンテンツ特徴を注入。
 3. **条件付けモジュール**: Whisper Base encoder (layer 5, 凍結) + ECAPA-TDNN話者エンコーダ (凍結)
 
-学習は合成ウィスパー-通常音声ペアのみ使用。推論はEuler積分10ステップ。
+多言語対応（英語+日本語）: language embedding を FlowW2NModel レベルで追加し、AdaLN で DiT に注入。
+
+学習は合成ウィスパー-通常音声ペアのみ使用。推論はEuler積分10ステップ（2次精度のHeunソルバーも選択可能）。
 
 ## パッケージ管理
 
@@ -54,8 +56,8 @@ src/floww2n/           # メインパッケージ
 configs/               # 設定ファイル (vae.json, dit.json, data.json)
 scripts/               # エントリポイントスクリプト
   train_vae.py, train_dit.py, cache_features.py, generate_whisper.py, inference.py, evaluate.py, preprocess_data.py, smoke_test_training.py
-tests/                 # テスト (79 tests passing)
-  test_vae.py (9), test_dit.py (14), test_losses.py (12), test_pipeline.py (16), test_dataset.py (9), test_whisper_synthesis.py (11), test_training.py (8)
+tests/                 # テスト (84 tests passing)
+  test_vae.py (9), test_dit.py (14), test_losses.py (12), test_pipeline.py (21), test_dataset.py (9), test_whisper_synthesis.py (11), test_training.py (8)
 ```
 
 ## 設定ファイル
@@ -90,6 +92,7 @@ tests/                 # テスト (79 tests passing)
 - Paired flow matching（z0=whisper, z1=normal）は時間的ミスアライメントで失敗する → ガウスノイズ事前分布+外部条件付けで解決
 - ASR特徴（Whisper）はdomain-invariantであり、合成ウィスパーで学習しても実ウィスパーに汎化可能
 - レイヤー選択基準: `ℓ* = argmax[Invariance(ℓ) × CCA(ℓ)]`
+- 多言語対応: FlowW2NModel レベルで language embedding を追加、global_cond = speaker_proj + language_emb で DiT に AdaLN 注入。num_languages ≤ 1 では挙動不変（後方互換）
 
 ## 開発スコープ
 
@@ -106,15 +109,17 @@ tests/                 # テスト (79 tests passing)
 | M3: DiT・CFM | ✅ 完了 | DiffusionTransformer, FlowW2NModel, 学習スクリプト |
 | M4: 推論・評価 | ✅ 完了 | FlowW2NPipeline, 評価指標, 統合テスト |
 | 品質監査 | ✅ 完了 | ruff lint/format, バグ修正, テスト追加, 最適化 |
+| 多言語対応 | ✅ 完了 | 英語+日本語, language embedding, JVS/JSUT対応 |
+| 最適化 | ✅ 完了 | torch.compile, CUDA最適化, Heunソルバー, 非同期チェックポイント |
 
 ## テスト実行
 
 ```bash
-uv run pytest tests/ -v   # 全テスト実行 (79 tests)
+uv run pytest tests/ -v   # 全テスト実行 (84 tests)
 uv run pytest tests/test_vae.py -v  # VAE テストのみ (9)
 uv run pytest tests/test_dit.py -v  # DiT テストのみ (14)
 uv run pytest tests/test_losses.py -v  # 損失関数テスト (12)
-uv run pytest tests/test_pipeline.py -v  # パイプラインテスト (16)
+uv run pytest tests/test_pipeline.py -v  # パイプラインテスト (21)
 uv run pytest tests/test_dataset.py -v  # データセットテスト (9)
 uv run pytest tests/test_whisper_synthesis.py -v  # 合成ウィスパーテスト (11)
 uv run pytest tests/test_training.py -v  # 学習テスト (8)
@@ -128,9 +133,15 @@ uv run ruff format --check src/ tests/ scripts/  # フォーマットチェッ�
 # VAE 学習
 uv run python scripts/train_vae.py --config configs/vae.json --data-dir <path> --output-dir outputs/vae
 
+# 合成ウィスパー生成
+uv run python scripts/generate_whisper.py --data-dir <path> --output-dir <path> --num-workers 8
+
 # 特徴量キャッシュ
-uv run python scripts/cache_features.py --data-dir <path> --output-dir <cache_path> --vae-checkpoint <vae_ckpt>
+uv run python scripts/cache_features.py --data-dir <path> --output-dir <cache_path> --vae-checkpoint <vae_ckpt> --batch-size 16
 
 # DiT 学習
 uv run python scripts/train_dit.py --config configs/dit.json --cache-dir <cache_path> --output-dir outputs/dit
+
+# 推論
+uv run python scripts/inference.py --checkpoint <ckpt> --input <wav> --output <out> --solver euler|heun
 ```

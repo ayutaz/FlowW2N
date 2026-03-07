@@ -313,7 +313,106 @@ def euler_sample(
 - `num_steps` を引数として公開（論文デフォルト: 10）
 - 将来的に他のソルバー (RK4, midpoint) への切り替えも検討
 
-### 3.4 推論パイプラインクラスの設計
+### 3.4 Heun ソルバー (2次精度)
+
+Euler 法に加え、Heun 法（改良 Euler 法）を2次精度の ODE ソルバーとして実装済み。ステップ数を半減しても同等の品質を達成できるが、1ステップあたり2回のモデル評価 (NFE) が必要。
+
+#### 数学的定式化
+
+```
+v1 = model(z, t, condition)       # 1st evaluation
+z_pred = z + dt * v1               # Euler prediction
+v2 = model(z_pred, t + dt, condition)  # 2nd evaluation at predicted point
+z = z + dt * (v1 + v2) / 2        # Corrected update (trapezoidal average)
+```
+
+#### 実装 (`src/floww2n/inference/sampler.py`)
+
+```python
+@torch.no_grad()
+def heun_solve(model, z0, whisper_h, speaker_emb, num_steps=10,
+               progress=False, language_id=None):
+    dt = 1.0 / num_steps
+    z = z0.clone()
+    timesteps = torch.linspace(0, 1.0 - dt, num_steps, device=z.device, dtype=z.dtype)
+    timesteps_next = timesteps + dt
+
+    for i in range(num_steps):
+        t = timesteps[i].expand(z.shape[0])
+        t_next = timesteps_next[i].expand(z.shape[0])
+
+        v1 = model(z, t, whisper_h, speaker_emb, language_id=language_id)
+        z_pred = z + dt * v1
+        v2 = model(z_pred, t_next, whisper_h, speaker_emb, language_id=language_id)
+        z = z + dt * (v1 + v2) / 2
+
+    return z
+```
+
+#### 使用方法
+
+`FlowW2NModel.sample()` および `FlowW2NPipeline` の `solver` パラメータで選択可能:
+
+```python
+# FlowW2NModel 直接使用
+z1 = model.sample(z0, whisper_h, speaker_emb, num_steps=5, solver="heun")
+
+# Pipeline 使用
+audio = pipeline(whisper_audio, solver="heun", num_steps=5)
+```
+
+| ソルバー | NFE/ステップ | 推奨ステップ数 | 品質 |
+|---------|-------------|--------------|------|
+| Euler | 1 | 10 | 論文デフォルト |
+| Heun | 2 | 5 | Euler 10ステップと同等 |
+
+### 3.5 推論最適化
+
+以下の最適化が推論パイプラインに実装済み:
+
+#### (a) CUDA 最適化: pinned memory + non_blocking GPU 転送
+
+`FlowW2NPipeline` では CUDA 使用時に pinned memory を利用して CPU→GPU 転送を高速化する:
+
+```python
+# pipeline.py
+if self.device.type == "cuda" and audio_tensor.device.type == "cpu":
+    audio_tensor = audio_tensor.pin_memory().to(self.device, non_blocking=True)
+```
+
+#### (b) VAE weight norm 除去
+
+`AudioAutoencoder.remove_weight_norm()` で推論前に weight normalization を除去し、forward pass を高速化:
+
+```python
+vae_model.remove_weight_norm()  # 推論前に呼び出し
+```
+
+**注意**: 小さな数値誤差 (>1e-3) が発生するため、学習時には使用しない。
+
+#### (c) DiT positional embedding キャッシュ
+
+`DiffusionTransformer` は sinusoidal positional embedding をキャッシュし、同一またはそれ以下の系列長に対する再計算を回避:
+
+```python
+# dit.py: DiffusionTransformer.forward() 内
+if self._pos_emb_cache is not None and T <= self._pos_emb_cache_len:
+    pos_emb = self._pos_emb_cache[:, :T, :]
+else:
+    pos_emb = sinusoidal_positional_embedding(T, self.head_dim, device=x.device)
+    self._pos_emb_cache = pos_emb
+    self._pos_emb_cache_len = T
+```
+
+#### (d) タイムステップ事前生成
+
+Euler/Heun ソルバーでは `torch.linspace` でタイムステップを事前生成し、ループ内の `torch.full()` オーバーヘッドを回避:
+
+```python
+timesteps = torch.linspace(0, 1.0 - dt, num_steps, device=z.device, dtype=z.dtype)
+```
+
+### 3.6 推論パイプラインクラスの設計
 
 ```python
 class FlowW2NPipeline:
@@ -353,7 +452,7 @@ class FlowW2NPipeline:
         return self.vae.decode(z1)
 ```
 
-### 3.5 バッチ推論の効率化
+### 3.7 バッチ推論の効率化
 
 | 手法 | 説明 | 優先度 |
 |------|------|--------|
@@ -464,7 +563,7 @@ tests/
 | 1 | Conditioning modules | 2-3 | P0 | ✅ Complete |
 | 2 | Inference pipeline | 3-5 | P0 | ✅ Complete |
 | 3 | Evaluation pipeline | 3-4 | P0/P1 | ✅ Complete |
-| 4 | Optimization | 2-3 | P1/P2 | ✅ Complete (gradient checkpointing, DataLoader) |
+| 4 | Optimization | 2-3 | P1/P2 | ✅ Complete (Heun solver, pinned memory, pos_emb cache, weight norm removal, torch.compile, async checkpointing) |
 
 ---
 

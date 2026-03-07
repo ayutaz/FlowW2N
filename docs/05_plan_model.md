@@ -3,10 +3,10 @@
 > **実装状況**: ✅ 全マイルストーン (M0-M4) 完了。品質監査完了。
 > - `src/floww2n/models/vae.py` - Oobleck VAE (~573 lines, ~40M params)
 > - `src/floww2n/models/dit.py` - DiffusionTransformer (~580 lines, ~205M params, gradient checkpointing対応)
-> - `src/floww2n/models/floww2n.py` - FlowW2NModel (CFM loss + Euler sampling, masked loss対応)
+> - `src/floww2n/models/floww2n.py` - FlowW2NModel (CFM loss + Euler/Heun sampling, masked loss対応, 多言語対応)
 > - `src/floww2n/training/losses.py` - Multi-res STFT + Discriminator + KL loss (feature_matching detach修正済み)
 > - `src/floww2n/training/train_vae.py` / `train_dit.py` - 学習ループ (bf16最適化、DataLoader高速化)
-> - テスト: 79 tests passing (test_vae 9, test_dit 14, test_losses 12, test_pipeline 16, test_dataset 9, test_whisper_synthesis 11, test_training 8)
+> - テスト: 84 tests passing (test_vae 9, test_dit 14, test_losses 12, test_pipeline 16, test_dataset 9, test_whisper_synthesis 11, test_training 8, 多言語テスト 5)
 > - コード品質: ruff lint 0 errors, ruff format 全36ファイル適用済み
 
 本ドキュメントでは、FlowW2N の再現実装に必要なコアモデル（VAE と DiT）の実装計画を策定する。stable-audio-tools の調査結果に基づき、Oobleck VAE と DiffusionTransformer の適応方針を詳述する。
@@ -113,11 +113,16 @@ SA2.0からの変更: sr 44100->16000, io 2->1, c_mults 5段->4段, strides変�
 | Discriminator | discriminators.py | adv:0.1, feat:5.0 |
 | KL | VAEBottleneck | 1e-4 |
 
-### 2.5 学習
+### 2.5 最適化
+
+- **Snake 活性化**: `torch.pow(sin, 2)` の代わりに `sin_val * sin_val` を使用し、計算効率を向上
+- **Weight norm 除去**: `AudioAutoencoder.remove_weight_norm()` で推論時の weight normalization を除去し、推論速度を向上（学習時は weight norm を維持）
+
+### 2.6 学習
 
 HiFi-TTS-2(24kHz)->16kHz->mono->65536samples(4.1s)->Enc->VAE->Dec->Loss. 80K steps, batch 256, AdamW(1.5e-4), EMA.
 
-### 2.6 検証
+### 2.7 検証
 
 STFT loss収束、聴取比較、フレームレート=in/1024、潜在shape=(B,64,L)
 
@@ -138,21 +143,32 @@ STFT loss収束、聴取比較、フレームレート=in/1024、潜在shape=(B,
 
 io_channels=64, embed_dim=768(論文未明記,初期値), depth=24, num_heads=12, cond_token_dim=512(Whisper Base), global_cond_dim=768, global_cond_type=adaLN, diffusion_objective=rectified_flow
 
-### 3.3 話者埋め込み注入(AdaLN)
+### 3.3 話者埋め込み注入(AdaLN)・多言語対応
 
 FlowW2NModel: speaker_proj(192d->embed_dim) -> dit.forward(global_embed=speaker_embed). 内部でtimestep_embedと加算されAdaLNに渡る。
+
+**多言語対応**: FlowW2NModel レベルで言語埋め込みを追加。
+- `language_emb = nn.Embedding(num_languages, embed_dim)` で言語ごとの埋め込みを生成
+- `global_cond = speaker_proj(e_spk) + language_emb(language_id)` として DiT に渡す
+- `num_languages <= 1` または `language_id=None` の場合は従来と同じ動作（後方互換）
+- 設定: `dit.json` の model セクションに `num_languages`、`languages` フィールド
 
 ### 3.4 Whisper特徴注入(Cross-Attention)
 
 Whisper Base layer5: (B,T_w,512) 50Hz. to_cond_embed(512->embed_dim)で投影。フレームレート差(50Hz vs 15.6Hz)はcross-attentionが吸収。
 
-### 3.5 Flow Matching学習
+### 3.5 最適化
+
+- **位置埋め込みキャッシュ**: `_pos_emb_cache` により、同一シーケンス長の位置埋め込みを再計算せずにキャッシュから取得。学習・推論の両方で効率向上
+- **Gradient checkpointing**: `gradient_checkpointing=True` 設定時、TransformerBlock を `torch.utils.checkpoint.checkpoint()` でラップし、メモリ使用量を削減（計算時間増加とのトレードオフ）
+
+### 3.6 Flow Matching学習
 
 z0~N(0,I), t~U[0,1], zt=(1-t)*z0+t*z1, target=z1-z0, loss=MSE(v_theta(zt,t,c), target)
 
-### 3.6 推論(Euler積分N=10)
+### 3.7 推論(Euler/Heun積分)
 
-z~N(0,I), dt=0.1, z+=dt*v_theta(z,t,c) x10回, audio=vae.decode(z)
+z~N(0,I), dt=1/N, z+=dt*v_theta(z,t,c) x N回, audio=vae.decode(z)。デフォルトはEuler積分N=10。Heunソルバー(`solver="heun"`)は2次精度で、少ないステップでも高品質。
 
 ---
 

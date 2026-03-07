@@ -14,6 +14,9 @@ FlowW2N は、ささやき音声（whispered speech）を通常音声（normal s
 - **合成データのみで学習**: 実ウィスパー音声のペアデータ不要。4手法の信号処理ベース合成ウィスパーで学習
 - **Domain-Invariant 条件付け**: Whisper Base encoder の ASR 特徴量がドメイン不変であることを利用し、合成→実ウィスパーへの汎化を実現
 - **SOTA 性能**: CHAINS / wTIMIT で既存手法比 WER 26-46% 相対改善
+- **多言語対応**: 英語・日本語の言語埋め込みによるマルチリンガルサポート
+- **Heun 2次 ODE ソルバー**: Euler に加え、高精度な Heun ソルバーを選択可能
+- **学習最適化**: torch.compile、CUDA 最適化、gradient checkpointing による高速化・省メモリ化
 
 ## Architecture
 
@@ -28,8 +31,8 @@ FlowW2N は、ささやき音声（whispered speech）を通常音声（normal s
   |
   +---> z0 ~ N(0, I)                 (B, 64, L)
   |
-  +---> [DiT: 24 Transformer blocks, Euler 積分 10 steps]
-  |         - AdaLN: timestep + speaker embedding
+  +---> [DiT: 24 Transformer blocks, Euler/Heun 積分 10 steps]
+  |         - AdaLN: timestep + speaker embedding + language embedding
   |         - Cross-Attention: Whisper content features
   |         |-> z1: (B, 64, L)
   |
@@ -89,13 +92,15 @@ DiT 学習の高速化のため、Whisper / ECAPA-TDNN / VAE の特徴量を事�
 # 合成ウィスパー生成
 uv run python scripts/generate_whisper.py \
   --data-dir <path-to-hifitts2> \
-  --output-dir <whisper-output>
+  --output-dir <whisper-output> \
+  --num-workers 4
 
 # 特徴量キャッシュ
 uv run python scripts/cache_features.py \
   --data-dir <path-to-data> \
   --output-dir <cache-path> \
-  --vae-checkpoint <vae-ckpt>
+  --vae-checkpoint <vae-ckpt> \
+  --batch-size 16
 ```
 
 #### Stage 2: DiT 学習
@@ -117,7 +122,8 @@ uv run python scripts/inference.py \
   --output-dir outputs/converted \
   --vae-checkpoint outputs/vae/vae_ema_final.pt \
   --dit-checkpoint outputs/dit/dit_ema_final.pt \
-  --num-steps 10
+  --num-steps 10 \
+  --solver euler|heun
 ```
 
 ### Evaluation
@@ -127,6 +133,16 @@ uv run python scripts/evaluate.py \
   --input-dir outputs/converted \
   --reference-dir <reference-normal-audio> \
   --output results.json
+```
+
+### Smoke Test
+
+学習パイプライン全体の動作確認を少量データで実行します。
+
+```bash
+uv run python scripts/smoke_test_training.py \
+  --jvs-dir <path-to-jvs-data> \
+  --output-dir outputs/smoke_test
 ```
 
 #### Evaluation Metrics
@@ -177,11 +193,11 @@ FlowW2N/
 │   ├── evaluate.py
 │   ├── preprocess_data.py
 │   └── smoke_test_training.py
-├── tests/                          # Tests (79 passing)
+├── tests/                          # Tests (84 passing)
 │   ├── test_vae.py                 #   9 tests
 │   ├── test_dit.py                 #   14 tests
 │   ├── test_losses.py              #   12 tests
-│   ├── test_pipeline.py            #   16 tests
+│   ├── test_pipeline.py            #   21 tests
 │   ├── test_dataset.py             #   9 tests
 │   ├── test_whisper_synthesis.py    #   11 tests
 │   └── test_training.py            #   8 tests
@@ -201,14 +217,14 @@ FlowW2N/
 ### Tests
 
 ```bash
-# Run all tests (79 tests)
+# Run all tests (84 tests)
 uv run pytest tests/ -v
 
 # Run specific test modules
 uv run pytest tests/test_vae.py -v        # VAE (9)
 uv run pytest tests/test_dit.py -v        # DiT (14)
 uv run pytest tests/test_losses.py -v     # Losses (12)
-uv run pytest tests/test_pipeline.py -v   # Pipeline (16)
+uv run pytest tests/test_pipeline.py -v   # Pipeline (21)
 uv run pytest tests/test_dataset.py -v    # Dataset (9)
 uv run pytest tests/test_whisper_synthesis.py -v  # Whisper synthesis (11)
 uv run pytest tests/test_training.py -v   # Training utils (8)
@@ -240,6 +256,22 @@ uv run ruff format --check src/ tests/ scripts/  # Format check
 - **Whisper layer 5**: `l* = argmax[Invariance(l) x CCA(l)]` の基準でドメイン不変性とコンテンツ情報量を最大化するレイヤーを選択
 - **Cross-attention > Prepending**: コンテンツ特徴の注入は cross-attention が全指標で優位
 - **bf16 mixed precision**: GradScaler 不要、gradient checkpointing で VRAM 削減
+
+## Optimizations
+
+学習・推論の高速化と省メモリ化のために以下の最適化を実装しています。
+
+| Category | Optimization | Description |
+|----------|-------------|-------------|
+| Compilation | `torch.compile()` | 設定フラグで有効化。学習ループの JIT コンパイル |
+| CUDA | cudnn.benchmark, TF32 | `setup_cuda_optimizations()` で自動設定 |
+| CUDA | Fused AdamW | CUDA 環境で `fused=True` を自動適用 |
+| Memory | Gradient checkpointing | `gradient_checkpointing: true` で VRAM 削減 |
+| I/O | Async checkpoint saving | ThreadPoolExecutor による非同期保存 (max_keep=3) |
+| Model | Snake activation 最適化 | `sin_val * sin_val` で高速化 |
+| Model | Positional embedding cache | DiffusionTransformer の位置埋め込みキャッシュ |
+| Inference | VAE weight norm removal | `remove_weight_norm()` で推論時の不要計算を削減 |
+| Pipeline | Pinned memory | `non_blocking` GPU 転送で I/O オーバーラップ |
 
 ## References
 

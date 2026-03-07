@@ -3,8 +3,9 @@
 > **実装状況**: ✅ 合成ウィスパー生成 (M2) およびデータパイプライン実装完了。品質監査完了。
 > - `src/floww2n/data/whisper_synthesis.py` - 4手法 (LPC, glottal, formant, praat) 実装完了
 > - `src/floww2n/training/dataset.py` - VAEDataset + DiTDataset + dit_collate_fn
-> - `scripts/generate_whisper.py` - バッチ合成ウィスパー生成スクリプト
-> - `scripts/cache_features.py` - 特徴量キャッシュスクリプト (Whisper h, ECAPA e_spk, VAE z1)
+> - `scripts/generate_whisper.py` - バッチ合成ウィスパー生成スクリプト (`--num-workers` でマルチプロセス対応)
+> - `scripts/cache_features.py` - 特徴量キャッシュスクリプト (`--batch-size` でバッチ処理対応)
+> - `scripts/preprocess_jvs_jsut.py` - JVS/JSUT 日本語データセット前処理スクリプト
 > - テスト: test_dataset.py (9 tests), test_whisper_synthesis.py (11 tests), test_training.py (8 tests)
 > - コード品質: ruff lint/format 適用済み
 
@@ -25,7 +26,7 @@ DataLoader 設計、キャッシュ戦略をカバーする。
 | 用途 | VAE 学習（normal speech）、DiT 学習（合成ウィスパー生成元） |
 | サンプリングレート | 24,000 Hz（原音）→ 16,000 Hz にリサンプリング |
 | フォーマット | WAV / FLAC |
-| 言語 | 英語 |
+| 言語 | 英語 (多言語対応時は日本語も追加) |
 
 ### 1.2 ダウンロード方法
 
@@ -71,6 +72,23 @@ HiFi-TTS-2 (24kHz)
 | 推論 | 可変長 | 入力音声の長さに依存 |
 
 VAE の潜在表現長: 65,536 / 1024 = 64 フレーム（ratio=1024 の場合）
+
+### 1.5 多言語データセット: JVS / JSUT (日本語)
+
+多言語対応として、日本語データセットも使用可能。`configs/data.json` の `datasets_multilingual` セクションで設定する。
+
+| データセット | 概要 | 話者数 | 総時間 |
+|-------------|------|--------|--------|
+| JVS (Japanese Versatile Speech) | 日本語多様音声コーパス | 100 | ~30h |
+| JSUT (Saruwatari-lab) | 日本語音声コーパス | 1 | ~10h |
+
+前処理スクリプト `scripts/preprocess_jvs_jsut.py` で 16kHz モノラルに変換:
+
+```bash
+uv run python scripts/preprocess_jvs_jsut.py --jvs-dir <path> --jsut-dir <path> --output-dir <path>
+```
+
+多言語学習時は `scripts/merge_manifests.py` で英語・日本語のマニフェストを結合し、`language_id` フィールドを付与する。
 
 ---
 
@@ -243,7 +261,22 @@ class WhisperSynthesizer:
         ...
 ```
 
-### 2.7 品質検証
+### 2.7 マルチプロセス合成ウィスパー生成
+
+`scripts/generate_whisper.py` は `--num-workers` フラグでマルチプロセス生成をサポートする。
+
+```bash
+uv run python scripts/generate_whisper.py --data-dir <path> --output-dir <path> --num-workers 8
+```
+
+| パラメータ | デフォルト | 説明 |
+|-----------|-----------|------|
+| `--num-workers` | `min(cpu_count, 8)` | 並列ワーカー数。`None` 指定時はCPUコア数に基づき自動決定 |
+| `--sample-rate` | 16000 | サンプリングレート |
+
+`num_workers <= 1` の場合はシングルプロセスにフォールバックする。マルチプロセス時は `ProcessPoolExecutor` を使用し、各ワーカーが独立に `WhisperSynthesizer` を初期化して処理する。
+
+### 2.8 品質検証
 
 合成ウィスパーの品質は以下の基準で検証する:
 
@@ -431,7 +464,25 @@ DiT 学習時に毎回 Whisper encoder と ECAPA-TDNN を実行するのは計�
 | Speaker e_spk | (192,) | float32 | ~768 B/utterance |
 | VAE z1 | (64, T/1024) | float32 | ~14 MB/h |
 
-### 5.3 キャッシュ付き DataLoader
+### 5.3 バッチ特徴量キャッシュ
+
+`scripts/cache_features.py` は `--batch-size` フラグでバッチ処理をサポートし、GPU を効率的に活用する。
+
+```bash
+uv run python scripts/cache_features.py \
+    --data-dir <path> --output-dir <cache_path> \
+    --vae-checkpoint <vae_ckpt> --batch-size 16
+```
+
+| パラメータ | デフォルト | 説明 |
+|-----------|-----------|------|
+| `--batch-size` | 16 | 一度に処理する音声ファイル数 |
+| `--device` | `cuda` | 推論デバイス |
+| `--language` | `None` | 多言語モデル用の言語コード |
+
+バッチ内の音声ファイルをまとめて読み込み、パディング後に Whisper encoder、ECAPA-TDNN、VAE encoder を一括推論することで、ファイル単位の処理に比べスループットが大幅に向上する。
+
+### 5.4 キャッシュ付き DataLoader
 
 ```python
 class CachedDiTDataset(torch.utils.data.Dataset):

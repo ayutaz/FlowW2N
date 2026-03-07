@@ -159,9 +159,9 @@ Ph3         [========]     DiT・Flow Matching・推論・評価コード
 | R2 | embed_dim の不適切な選択 | 中 | 中 | 768 で開始、512/1024 でアブレーション |
 | R3 | VAE の復元品質不足 | 高 | 低 | SA2.0 の設定を忠実に再現、損失関数のバランス調整 |
 | R4 | 合成ウィスパーの品質不足 | 高 | 中 | 4手法の品質を個別検証、実ウィスパーとの Pearson 相関確認 |
-| R5 | DiT の学習不安定 | 中 | 中 | 学習率ウォームアップ、勾配クリッピング、EMA |
+| R5 | DiT の学習不安定 | 中 | 中 | 学習率ウォームアップ、勾配クリッピング、EMA、gradient checkpointing、masked CFM loss |
 | R6 | ドメインシフト（合成→実ウィスパー） | 高 | 中 | Whisper layer 5 の domain invariance を事前検証 |
-| R7 | 計算リソース不足 | 中 | 低-中 | 勾配累積、混合精度、チェックポイント |
+| R7 | 計算リソース不足 | 中 | 低-中 | 勾配累積、混合精度、チェックポイント、torch.compile、CUDA最適化 (TF32, cudnn.benchmark)、gradient checkpointing、fused AdamW、非同期チェックポイント保存 |
 | R8 | 評価データセットの入手困難 | 中 | 中 | wTIMIT: LDC 経由、CHAINS: 公開データ |
 | R9 | Python / ライブラリ互換性 | 低 | 中 | Python 3.11/3.12 固定、仮想環境で管理 |
 | R10 | 合成ウィスパー手法の実装困難 | 中 | 中 | LPC + Praat を先行実装、残り2手法は後回し可 |
@@ -237,7 +237,36 @@ Ph3         [========]     DiT・Flow Matching・推論・評価コード
 - [x] テスト追加: 34 → 79テスト（+45テスト）
 - [x] ruff lint/format 設定・適用（0 errors, 36ファイル）
 
-**完了基準**: 全テスト通過、lint 0エラー、全ファイルフォーマット済み。 **(達成済み: 79/79テスト通過, ruff check 0 errors, ruff format 36 files)**
+**完了基準**: 全テスト通過、lint 0エラー、全ファイルフォーマット済み。 **(達成済み: 79/79テスト通過 → 多言語対応・最適化で84テストに拡大, ruff check 0 errors, ruff format 36 files)**
+
+### M6: 多言語対応完了 --- COMPLETE
+
+- [x] Language embedding を FlowW2NModel に追加 (AdaLN 経由で DiT に注入)
+- [x] `num_languages <= 1` または `language_id=None` で後方互換性を維持
+- [x] `dit.json` に `num_languages`、`languages` フィールド追加
+- [x] JVS/JSUT 日本語データセット前処理スクリプト (`preprocess_jvs_jsut.py`)
+- [x] マニフェスト結合スクリプト (`merge_manifests.py`)
+- [x] 推論パイプラインで `language` パラメータ対応
+- [x] 多言語テスト追加 (test_dit.py)
+
+**完了基準**: 英語+日本語の2言語学習・推論が可能。 **(達成済み: language embedding, JVS/JSUT対応, 後方互換テスト通過)**
+
+### M7: 最適化完了 --- COMPLETE
+
+- [x] `torch.compile()` サポート (`train_cfg["compile"]` フラグ)
+- [x] CUDA 最適化 (`setup_cuda_optimizations()`: cudnn.benchmark, TF32, matmul precision)
+- [x] `fused=True` AdamW (CUDA), `zero_grad(set_to_none=True)`
+- [x] 非同期チェックポイント保存 (ThreadPoolExecutor, max_keep=3)
+- [x] Heun ソルバー (2次精度 ODE ソルバー) の実装
+- [x] 推論パイプライン: pinned memory + non_blocking GPU 転送
+- [x] VAE: `remove_weight_norm()` で推論高速化
+- [x] DiT: positional embedding キャッシュ
+- [x] Sampler: タイムステップ事前生成 (`torch.linspace`)
+- [x] Snake activation: `sin_val * sin_val` で `torch.pow` 回避
+- [x] `cache_features.py --batch-size` でバッチ特徴量抽出
+- [x] `generate_whisper.py --num-workers` でマルチプロセス合成
+
+**完了基準**: 学習・推論の主要なボトルネックに対する最適化が実装済み。 **(達成済み: torch.compile, CUDA opts, Heun solver, async checkpointing, pinned memory, weight norm removal, pos_emb cache 等)**
 
 ---
 
@@ -296,7 +325,7 @@ FlowW2N/
 │   ├── train_dit.py
 │   ├── inference.py
 │   └── evaluate.py
-└── tests/                         # テスト (79 tests)
+└── tests/                         # テスト (84 tests)
     ├── test_vae.py                # VAEテスト (9)
     ├── test_dit.py                # DiT/FlowW2Nテスト (14)
     ├── test_losses.py             # 損失関数テスト (12)
@@ -328,15 +357,19 @@ FlowW2N/
 | +1 | 合成ウィスパー残り3手法 | 全4手法の WhisperSynthesizer | **✅ 完了** |
 | +2 | 学習スクリプト完成 | train_vae.py, train_dit.py が実行可能 | **✅ 完了** |
 | +3 | 評価パイプライン | 全5指標の計算コード | **✅ 完了** |
-| +4 | 設定ファイル・テスト | configs/, tests/ の整備 | **✅ 完了** (79/79テスト通過) |
+| +4 | 設定ファイル・テスト | configs/, tests/ の整備 | **✅ 完了** |
 | +5 | 品質監査 | バグ修正、最適化、ruff lint/format | **✅ 完了** |
+| +6 | 多言語対応 | English + Japanese, language embedding | **✅ 完了** |
+| +7 | 最適化 | torch.compile, CUDA opts, Heun solver, async checkpointing | **✅ 完了** (84/84テスト通過) |
 
 ---
 
 ## 8. まとめ
 
-1. **全マイルストーン (M0-M5) 完了**: 環境構築からVAE、条件付け、DiT、推論・評価、品質監査まで全工程のコードが完成
+1. **全マイルストーン (M0-M7) 完了**: 環境構築からVAE、条件付け、DiT、推論・評価、品質監査、多言語対応、最適化まで全工程のコードが完成
 2. **論文未記載パラメータ** は SA2.0 と DiT 原論文から推定（embed_dim=768, lr=1.5e-4 等）
 3. **品質監査で19件の問題を特定・修正**: KL係数、gradient checkpointing、masked loss、DataLoader最適化等
-4. **79テスト通過、ruff lint 0エラー**: コード品質を継続的に担保
-5. **成果物**: 学習環境にデプロイ可能な再現実装コード一式（モデル、学習スクリプト、推論・評価パイプライン）
+4. **多言語対応**: English + Japanese の2言語学習・推論をサポート (language embedding, JVS/JSUT データセット)
+5. **最適化**: torch.compile、CUDA最適化、Heun 2次ソルバー、非同期チェックポイント、pinned memory、weight norm除去等
+6. **84テスト通過、ruff lint 0エラー**: コード品質を継続的に担保
+7. **成果物**: 学習環境にデプロイ可能な再現実装コード一式（モデル、学習スクリプト、推論・評価パイプライン）

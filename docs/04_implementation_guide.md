@@ -70,7 +70,7 @@ FlowW2N は以下の5つの主要コンポーネントから構成される。
 | (3) Formant bandwidth modification | Lin et al., ASRU 2023 [5] | フォルマント帯域幅の変更 |
 | (4) Praat Vocal Toolkit | praatvocaltoolkit.com/whisper.html | Praat による合成ウィスパー生成 |
 
-**実装ノート**: 4手法を組み合わせることで、合成ウィスパーの多様性を確保し、モデルの汎化性能を向上させている。各手法は独立に実装可能。
+**実装ノート**: 4手法を組み合わせることで、合成ウィスパーの多様性を確保し、モデルの汎化性能を向上させている。各手法は独立に実装可能。`generate_whisper.py --num-workers` でマルチプロセス並列処理が可能。
 
 ---
 
@@ -181,6 +181,12 @@ z1 --> VAE Decoder D --> s_hat (通常音声の推定)
 - Euler 法による離散化で N=10 ステップのみで十分な品質を達成
 - 全ての条件付けモデル（Whisper Base, ECAPA-TDNN）と VAE Decoder は凍結状態で使用
 
+**Heun ソルバー（2次精度）**:
+- Euler ソルバーの代替として Heun（改良 Euler）ソルバーを実装
+- 各ステップで 2 回の関数評価（NFE）を行う2次精度の ODE ソルバー
+- ステップ数が少ない場合（N<10）に Euler より高品質な結果を得られる
+- `FlowW2NModel.sample(solver="euler"|"heun")` で切り替え可能
+
 ---
 
 ## 4. 使用するデータセットと事前学習モデル
@@ -255,8 +261,8 @@ z1 --> VAE Decoder D --> s_hat (通常音声の推定)
 
 | パラメータ | 値 |
 |-----------|-----|
-| サンプリング手法 | Euler 積分 |
-| ステップ数 N | 10 |
+| サンプリング手法 | Euler 積分（デフォルト）/ Heun 積分（2次精度） |
+| ステップ数 N | 10（Euler）。Heun は少ないステップで同等品質 |
 | 初期分布 | z0 ~ N(0, I) |
 
 ### 5.5 Content Encoder 関連
@@ -277,45 +283,107 @@ z1 --> VAE Decoder D --> s_hat (通常音声の推定)
 
 ---
 
-## 6. 参考文献リスト（実装に必要なもの）
+## 6. 最適化
+
+再現実装では、学習・推論の効率化のために以下の最適化を実装している。
+
+### 6.1 学習最適化
+
+| 最適化項目 | 設定方法 | 説明 |
+|-----------|---------|------|
+| torch.compile() | `train_cfg["compile"]: true` | モデルの JIT コンパイルによる高速化 |
+| CUDA 最適化 | `setup_cuda_optimizations()` | cudnn.benchmark、TF32、matmul precision の自動設定 |
+| Fused AdamW | 自動（CUDA 環境） | `fused=True` による最適化された AdamW オプティマイザ |
+| zero_grad 最適化 | 自動 | `zero_grad(set_to_none=True)` による勾配メモリの効率化 |
+| Gradient checkpointing | `dit.json: "gradient_checkpointing": true` | メモリ使用量の削減（計算時間とのトレードオフ） |
+| 非同期チェックポイント保存 | 自動 | ThreadPoolExecutor による非同期保存、max_keep=3 |
+
+### 6.2 推論最適化
+
+| 最適化項目 | 説明 |
+|-----------|------|
+| Weight norm 除去 | `AudioAutoencoder.remove_weight_norm()` で推論速度向上 |
+| Heun ソルバー | 2次精度ソルバー。少ないステップ数で高品質（2 NFE/step） |
+| ピン留めメモリ | パイプラインで pinned memory を使用した非ブロッキング GPU 転送 |
+
+### 6.3 データ処理最適化
+
+| 最適化項目 | 設定方法 | 説明 |
+|-----------|---------|------|
+| バッチ特徴量キャッシュ | `cache_features.py --batch-size` | バッチ処理による特徴量抽出の高速化 |
+| マルチプロセス合成ウィスパー | `generate_whisper.py --num-workers` | 複数プロセスによる並列合成 |
+
+---
+
+## 7. 多言語対応
+
+### 7.1 言語埋め込みアーキテクチャ
+
+FlowW2NModel レベルで言語埋め込みを実装。DiT 内部ではなく、FlowW2NModel の条件付けで統合される。
+
+```
+global_cond = speaker_proj(e_spk) + language_emb(language_id)
+```
+
+- `speaker_proj`: ECAPA-TDNN 出力 (192d) を embed_dim に投影
+- `language_emb`: `nn.Embedding(num_languages, embed_dim)` による言語埋め込み
+- 加算された `global_cond` が DiT に AdaLN 経由で渡される
+
+### 7.2 設定
+
+`dit.json` の model セクションに以下のフィールドを追加:
+
+| フィールド | 型 | 説明 |
+|-----------|-----|------|
+| `num_languages` | int | 言語数（例: 2） |
+| `languages` | list[str] | 言語識別子のリスト（例: `["en", "ja"]`） |
+
+### 7.3 後方互換性
+
+- `num_languages <= 1` または `language_id=None` の場合、言語埋め込みは無効化される
+- 既存の単一言語モデル・設定との完全な後方互換性を維持
+
+---
+
+## 8. 参考文献リスト（実装に必要なもの）
 
 以下は再現実装に直接関連する参考文献の一覧である。
 
-### 6.1 コアアーキテクチャ関連
+### 8.1 コアアーキテクチャ関連
 
 | 番号 | 文献 | 関連コンポーネント |
 |------|------|-------------------|
 | [22] | Z. Evans et al., "Fast timing-conditioned latent audio diffusion," ICML 2024 | stable-audio-tools（VAE, DiT のベース実装） |
 | [23] | W. Peebles and S. Xie, "Scalable diffusion models with transformers," ICCV 2023 | DiT アーキテクチャの原論文 |
 
-### 6.2 Flow Matching 理論
+### 8.2 Flow Matching 理論
 
 | 番号 | 文献 | 関連内容 |
 |------|------|---------|
 | [17] | Y. Lipman et al., "Flow matching for generative modeling," ICLR 2023 | Flow matching の理論的基礎 |
 | [20] | X. Liu et al., "Flow straight and fast: Learning to generate and transfer data with rectified flow," ICLR 2023 | Rectified flow（線形補間パスの理論的背景） |
 
-### 6.3 条件付けモデル
+### 8.3 条件付けモデル
 
 | 番号 | 文献 | 関連コンポーネント |
 |------|------|-------------------|
 | [30] | A. Radford et al., "Robust speech recognition via large-scale weak supervision," ICML 2023 | Whisper モデル（コンテンツエンコーダ） |
 | [24] | B. Desplanques et al., "ECAPA-TDNN," Interspeech 2020 | 話者エンコーダ |
 
-### 6.4 合成ウィスパー生成
+### 8.4 合成ウィスパー生成
 
 | 番号 | 文献 | 関連内容 |
 |------|------|---------|
 | [5] | Z. Lin et al., "Improving whispered speech recognition performance using pseudo-whispered based data augmentation," ASRU 2023 | Glottal source removal、Formant bandwidth modification の手法 |
 
-### 6.5 データセットとツール
+### 8.5 データセットとツール
 
 | 番号 | 文献/リソース | 関連内容 |
 |------|-------------|---------|
 | [27] | NVIDIA, "HiFi-TTS-2 dataset" (huggingface.co/datasets/nvidia/hifitts-2) | 学習データセット |
 | [25] | M. Bain et al., "WhisperX," Interspeech 2023 | 強制アライメント（必要に応じて使用） |
 
-### 6.6 実装で参照すべき外部リポジトリ/ツール
+### 8.6 実装で参照すべき外部リポジトリ/ツール
 
 | リソース | URL | 用途 |
 |---------|-----|------|
@@ -344,7 +412,7 @@ z1 --> VAE Decoder D --> s_hat (通常音声の推定)
 - [ ] wTIMIT データセットの準備（評価用）
 - [ ] CHAINS データセットの準備（評価用）
 - [x] 合成ウィスパー生成コード完成（4手法、等確率サンプリング）
-- [x] 特徴量キャッシュスクリプト (cache_features.py) 完成
+- [x] 特徴量キャッシュスクリプト (cache_features.py) 完成（`--batch-size` でバッチ処理対応）
 - [x] データ前処理スクリプト (preprocess_data.py) 完成
 
 ### C. モデル学習
@@ -356,7 +424,7 @@ z1 --> VAE Decoder D --> s_hat (通常音声の推定)
 ### D. 推論と評価
 - [x] 推論パイプライン構築 (FlowW2NPipeline, Euler 積分 N=10)
 - [x] 評価パイプライン構築 (WER-N, WER-W, UTMOS, DNSMOS, SpkSim)
-- [x] 統合テスト通過 (79テスト)
+- [x] 統合テスト通過 (84テスト)
 - [ ] wTIMIT での評価実行
 - [ ] CHAINS での評価実行
 - [ ] 結果の論文値との比較
