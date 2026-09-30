@@ -44,6 +44,7 @@ src/floww2n/           # メインパッケージ
     dataset.py         # VAEDataset + DiTDataset + dit_collate_fn
     train_vae.py       # VAE 学習ループ (EMA, bf16, discriminator)
     train_dit.py       # DiT 学習ループ (CFM, EMA, bf16, warmup)
+    checkpoint_utils.py # チェックポイントのステップ順ソート・ローテーション
   inference/           # 推論パイプライン
     pipeline.py        # FlowW2NPipeline: end-to-end推論
     sampler.py         # Euler sampler
@@ -56,8 +57,8 @@ src/floww2n/           # メインパッケージ
 configs/               # 設定ファイル (vae.json, dit.json, data.json)
 scripts/               # エントリポイントスクリプト
   train_vae.py, train_dit.py, cache_features.py, generate_whisper.py, inference.py, evaluate.py, preprocess_data.py, smoke_test_training.py
-tests/                 # テスト (84 tests passing)
-  test_vae.py (9), test_dit.py (14), test_losses.py (12), test_pipeline.py (21), test_dataset.py (9), test_whisper_synthesis.py (11), test_training.py (8)
+tests/                 # テスト (86 tests passing)
+  test_vae.py (9), test_dit.py (14), test_losses.py (12), test_pipeline.py (21), test_dataset.py (9), test_whisper_synthesis.py (11), test_training.py (10)
 ```
 
 ## 設定ファイル
@@ -115,14 +116,14 @@ tests/                 # テスト (84 tests passing)
 ## テスト実行
 
 ```bash
-uv run pytest tests/ -v   # 全テスト実行 (84 tests)
+uv run pytest tests/ -v   # 全テスト実行 (86 tests)
 uv run pytest tests/test_vae.py -v  # VAE テストのみ (9)
 uv run pytest tests/test_dit.py -v  # DiT テストのみ (14)
 uv run pytest tests/test_losses.py -v  # 損失関数テスト (12)
 uv run pytest tests/test_pipeline.py -v  # パイプラインテスト (21)
 uv run pytest tests/test_dataset.py -v  # データセットテスト (9)
 uv run pytest tests/test_whisper_synthesis.py -v  # 合成ウィスパーテスト (11)
-uv run pytest tests/test_training.py -v  # 学習テスト (8)
+uv run pytest tests/test_training.py -v  # 学習テスト (10)
 uv run ruff check src/ tests/ scripts/  # lint チェック
 uv run ruff format --check src/ tests/ scripts/  # フォーマットチェック
 ```
@@ -143,5 +144,5 @@ uv run python scripts/cache_features.py --data-dir <path> --output-dir <cache_pa
 uv run python scripts/train_dit.py --config configs/dit.json --cache-dir <cache_path> --output-dir outputs/dit
 
 # 推論
-uv run python scripts/inference.py --checkpoint <ckpt> --input <wav> --output <out> --solver euler|heun
+uv run python scripts/inference.py --vae-checkpoint <vae_ckpt> --dit-checkpoint <dit_ckpt> --input <wav_or_dir> --output-dir <out_dir> --solver euler|heun
 ```
