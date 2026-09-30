@@ -113,3 +113,36 @@ class TestCFMLossWithMask:
             if param.requires_grad:
                 assert param.grad is not None, f"No gradient for {name}"
                 break  # Just check first param
+
+
+class TestCheckpointPruning:
+    """Tests for checkpoint rotation (keep the newest ``max_keep`` by step number)."""
+
+    def _touch(self, tmp_path, steps):
+        for step in steps:
+            (tmp_path / f"checkpoint_{step}.pt").write_bytes(b"")
+
+    def test_sorted_by_step_not_name(self, tmp_path):
+        from floww2n.training.checkpoint_utils import sorted_checkpoints
+
+        self._touch(tmp_path, [95000, 100000, 5000, 20000])
+        (tmp_path / "checkpoint_latest.pt").write_bytes(b"")  # non-numeric: ignored
+        names = [p.name for p in sorted_checkpoints(tmp_path)]
+        assert names == [
+            "checkpoint_5000.pt",
+            "checkpoint_20000.pt",
+            "checkpoint_95000.pt",
+            "checkpoint_100000.pt",
+        ]
+
+    def test_prune_keeps_newest_across_digit_boundary(self, tmp_path):
+        from floww2n.training.checkpoint_utils import prune_checkpoints
+
+        self._touch(tmp_path, [85000, 90000, 95000, 100000])
+        prune_checkpoints(tmp_path, max_keep=3)
+        remaining = sorted(p.name for p in tmp_path.glob("checkpoint_*.pt"))
+        assert remaining == [
+            "checkpoint_100000.pt",
+            "checkpoint_90000.pt",
+            "checkpoint_95000.pt",
+        ]

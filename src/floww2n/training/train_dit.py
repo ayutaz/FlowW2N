@@ -19,6 +19,7 @@ from ema_pytorch import EMA
 from torch.utils.data import DataLoader
 
 from floww2n.models.floww2n import FlowW2NModel
+from floww2n.training.checkpoint_utils import prune_checkpoints
 from floww2n.training.dataset import DiTDataset, dit_collate_fn
 
 _ckpt_executor = ThreadPoolExecutor(max_workers=1)
@@ -262,10 +263,8 @@ def save_checkpoint(output_path, model, optimizer, ema, global_step, max_keep=3)
 
     def _save():
         torch.save(checkpoint, path)
-        # Remove old checkpoints
-        ckpts = sorted(output_path.glob("checkpoint_*.pt"))
-        for old in ckpts[:-max_keep]:
-            old.unlink()
+        # Remove old checkpoints (sorted by step number, not file name)
+        prune_checkpoints(output_path, max_keep)
         print(f"Saved checkpoint at step {global_step}")
 
     _ckpt_executor.submit(_save)
