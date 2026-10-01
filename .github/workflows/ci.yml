@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test:
+    name: ruff + pytest (CPU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      # Python は .python-version (3.13)、PyTorch は uv.lock (CUDA 12.6 index) に従う。
+      # テストはダミーエンコーダを使うため GPU / モデルダウンロード不要で CPU 上で完結する。
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Lint (ruff check)
+        run: uv run ruff check src/ tests/ scripts/
+
+      - name: Format check (ruff format)
+        run: uv run ruff format --check src/ tests/ scripts/
+
+      - name: Test (pytest)
+        run: uv run pytest tests/ -v

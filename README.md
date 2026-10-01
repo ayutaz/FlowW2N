@@ -53,6 +53,7 @@ FlowW2N は、ささやき音声（whispered speech）を通常音声（normal s
 
 - Python >= 3.11
 - CUDA 対応 GPU (学習時推奨)
+- FFmpeg (4〜8): torchaudio 2.9 以降の `torchaudio.load` は TorchCodec 経由で FFmpeg を使うため、学習・特徴量キャッシュ・推論・評価スクリプトでの音声読み込みに必要
 
 ### Installation
 
@@ -130,7 +131,7 @@ uv run python scripts/inference.py \
 
 ```bash
 uv run python scripts/evaluate.py \
-  --input-dir outputs/converted \
+  --converted-dir outputs/converted \
   --reference-dir <reference-normal-audio> \
   --output results.json
 ```
@@ -149,7 +150,7 @@ uv run python scripts/smoke_test_training.py \
 
 | Metric | Tool | Direction |
 |--------|------|-----------|
-| WER-N | Whisper large-v3 | Lower is better |
+| WER-N | Whisper base (`openai/whisper-base`) | Lower is better |
 | WER-W | Whisper tiny | Lower is better |
 | UTMOS | SpeechMOS | Higher is better |
 | DNSMOS | ONNX P.835 | Higher is better |
@@ -174,7 +175,8 @@ FlowW2N/
 │   │   ├── losses.py               #     Multi-res STFT + Discriminator + KL
 │   │   ├── dataset.py              #     VAEDataset + DiTDataset + collate_fn
 │   │   ├── train_vae.py            #     VAE training loop
-│   │   └── train_dit.py            #     DiT training loop
+│   │   ├── train_dit.py            #     DiT training loop
+│   │   └── checkpoint_utils.py     #     Checkpoint rotation helpers
 │   ├── inference/                  #   Inference pipeline
 │   │   ├── pipeline.py             #     FlowW2NPipeline (end-to-end)
 │   │   └── sampler.py              #     Euler sampler
@@ -193,14 +195,14 @@ FlowW2N/
 │   ├── evaluate.py
 │   ├── preprocess_data.py
 │   └── smoke_test_training.py
-├── tests/                          # Tests (84 passing)
+├── tests/                          # Tests (86 passing)
 │   ├── test_vae.py                 #   9 tests
 │   ├── test_dit.py                 #   14 tests
 │   ├── test_losses.py              #   12 tests
 │   ├── test_pipeline.py            #   21 tests
 │   ├── test_dataset.py             #   9 tests
 │   ├── test_whisper_synthesis.py    #   11 tests
-│   └── test_training.py            #   8 tests
+│   └── test_training.py            #   10 tests
 └── docs/                           # Documentation
     ├── 01_overview.md              #   Paper overview
     ├── 02_method.md                #   Method & formulas
@@ -217,7 +219,7 @@ FlowW2N/
 ### Tests
 
 ```bash
-# Run all tests (84 tests)
+# Run all tests (86 tests)
 uv run pytest tests/ -v
 
 # Run specific test modules
@@ -227,7 +229,7 @@ uv run pytest tests/test_losses.py -v     # Losses (12)
 uv run pytest tests/test_pipeline.py -v   # Pipeline (21)
 uv run pytest tests/test_dataset.py -v    # Dataset (9)
 uv run pytest tests/test_whisper_synthesis.py -v  # Whisper synthesis (11)
-uv run pytest tests/test_training.py -v   # Training utils (8)
+uv run pytest tests/test_training.py -v   # Training utils (10)
 ```
 
 ### Linting & Formatting

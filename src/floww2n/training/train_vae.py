@@ -10,6 +10,7 @@ from ema_pytorch import EMA
 from torch.utils.data import DataLoader
 
 from floww2n.models.vae import AudioAutoencoder
+from floww2n.training.checkpoint_utils import prune_checkpoints
 from floww2n.training.dataset import VAEDataset
 from floww2n.training.losses import VAELoss
 
@@ -224,10 +225,8 @@ def save_checkpoint(output_path, model, criterion, opt_g, opt_d, ema, global_ste
 
     def _save():
         torch.save(checkpoint, path)
-        # Remove old checkpoints
-        ckpts = sorted(output_path.glob("checkpoint_*.pt"))
-        for old in ckpts[:-max_keep]:
-            old.unlink()
+        # Remove old checkpoints (sorted by step number, not file name)
+        prune_checkpoints(output_path, max_keep)
         print(f"Saved checkpoint at step {global_step}")
 
     _ckpt_executor.submit(_save)
